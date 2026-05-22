@@ -862,7 +862,301 @@ function PlayersTab({events, teamA, teamB, mobile}) {
   </div>;
 }
 
-curTeam} side={activeTeam} wave={wave} clock={clock}
+// ═══ HISTORY TAB ══════════════════════════════════════════════
+function HistoryTab({events, teamA, teamB, matchHistory, dispatch}) {
+  const [expandId, setExpandId] = useState(null);
+  const waveColor = w=>WAVES.find(x=>x.id===w)?.color||'rgba(255,255,255,0.1)';
+  const waveLabel = w=>WAVES.find(x=>x.id===w)?.label||'';
+
+  const renderEvent = (e, idx, tA, tB)=>{
+    const team = e.team==='A' ? tA : tB;
+    const player = e.pid ? team.players.find(p=>p.id===e.pid) : null;
+    const z = ZONES.find(zn=>zn.id===e.zone);
+    const fouln = e.kind==='FOUL' ? FOUL_TYPES.find(f=>f.id===e.severity) : null;
+    const ton = e.kind==='TO' ? TO_TYPES.find(tt=>tt.id===e.toType) : null;
+    let label, color;
+    if (e.kind==='FOUL') { label = fouln?.label||'Foul'; color = fouln?.color||'#FBBF24'; }
+    else if (e.kind==='TO') { label = 'Turnover'+(ton?' — '+ton.label:''); color = '#D97706'; }
+    else if (e.kind==='BLOCK') { label = 'BLOCK'; color = '#3B82F6'; }
+    else if (e.kind==='STEAL') { label = 'STEAL'; color = '#10B981'; }
+    else { label = e.outcome||'?'; color = e.outcome==='GOAL'?'#34D399':e.outcome==='SAVE'?'#F87171':'#6B7280'; }
+    return (
+      <div key={e.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',
+        marginBottom:4,background:'rgba(255,255,255,0.02)',borderRadius:10,
+        border:'1px solid rgba(255,255,255,0.04)',borderLeft:'3px solid '+color}}>
+        <div style={{minWidth:44,textAlign:'center'}}>
+          {player
+            ?<><div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:20,color:team.color,lineHeight:1}}>#{player.no}</div>
+              <div style={{fontFamily:'Barlow',fontSize:8,color:'rgba(255,255,255,0.3)',lineHeight:1.2,overflow:'hidden',whiteSpace:'nowrap'}}>{player.name.split(' ')[0]}</div></>
+            :<div style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:18,color:'rgba(255,255,255,0.15)'}}>—</div>
+          }
+        </div>
+        <Badge team={team} size={20}/>
+        <div style={{flex:1}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+            <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:13,color:color}}>{label}</span>
+            {z&&<span style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.4)'}}>— {z.lbl}</span>}
+            {e.wave&&e.wave!=='ALL'&&<span style={{fontFamily:'Barlow Condensed',fontSize:9,fontWeight:700,
+              color:waveColor(e.wave),background:waveColor(e.wave)+'20',borderRadius:4,padding:'1px 5px'}}>{waveLabel(e.wave)}</span>}
+          </div>
+          {(e.half!==undefined||e.clock!==undefined)&&<div style={{fontFamily:'Barlow',fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:1}}>
+            {e.half?halfLabel(e.half):''} {e.clock!==undefined?fmtClock(e.clock):''}
+          </div>}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="sc" style={{overflowY:'auto',padding:'16px',maxWidth:720,margin:'0 auto'}}>
+      {matchHistory.length>0&&<>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em',marginBottom:10}}>COMPLETED MATCHES</div>
+        {matchHistory.map(m=><div key={m.id} style={{background:'rgba(255,255,255,0.03)',borderRadius:12,padding:'14px',marginBottom:10,border:'1px solid rgba(255,255,255,0.06)'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer'}} onClick={()=>setExpandId(expandId===m.id?null:m.id)}>
+            <div>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:16,color:'white'}}>
+                <span style={{color:m.teamA.color}}>{m.teamA.name}</span>
+                <span style={{color:'rgba(255,255,255,0.4)',margin:'0 10px'}}>{m.score.A}–{m.score.B}</span>
+                <span style={{color:m.teamB.color}}>{m.teamB.name}</span>
+              </div>
+              <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:3}}>{m.date} · {m.events.length} events</div>
+            </div>
+            <div style={{fontFamily:'Barlow Condensed',fontSize:18,color:'rgba(255,255,255,0.3)'}}>{expandId===m.id?'▲':'▼'}</div>
+          </div>
+          {expandId===m.id&&<div style={{marginTop:12,borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:12}}>
+            {[...m.events].reverse().slice(0,30).map((e,i)=>renderEvent(e,i,m.teamA,m.teamB))}
+          </div>}
+        </div>)}
+      </>}
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,marginTop:matchHistory.length?16:0}}>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em'}}>CURRENT MATCH ({events.length} events)</div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn" onClick={()=>dispatch({type:'UNDO'})} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(220,38,38,0.2)',borderRadius:8,padding:'5px 10px',fontWeight:700,fontSize:11,color:'rgba(252,129,129,0.75)'}}>↶ UNDO</button>
+          <button className="btn" onClick={()=>{if(window.confirm('Clear all?'))dispatch({type:'CLEAR'});}} style={{background:'rgba(220,38,38,0.08)',border:'1px solid rgba(220,38,38,0.15)',borderRadius:8,padding:'5px 10px',fontWeight:700,fontSize:11,color:'rgba(252,129,129,0.6)'}}>CLEAR</button>
+        </div>
+      </div>
+      {events.length===0&&<div style={{textAlign:'center',padding:'30px 0',fontFamily:'Barlow',fontSize:13,color:'rgba(255,255,255,0.2)'}}>No events yet</div>}
+      {[...events].reverse().map((e,i)=>renderEvent(e,i,teamA,teamB))}
+    </div>
+  );
+}
+
+// ═══ DATABASE TAB ═════════════════════════════════════════════
+function DatabaseTab({teamDB, setTeamDB, matchTeams, setMatchTeams}) {
+  const [editId, setEditId] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const startEdit = (t)=>{ setEditId(t.id); setDraft(JSON.parse(JSON.stringify(t))); };
+  const startNew  = ()=>{ const t={id:mkId(),name:'New Team',color:'#3B82F6',players:[]}; setTeamDB(d=>[...d,t]); setEditId(t.id); setDraft(t); };
+  const saveEdit  = ()=>{ setTeamDB(d=>d.map(t=>t.id===editId?draft:t)); setEditId(null); };
+  const delTeam   = (id)=>{ if(!window.confirm('Delete team?'))return; setTeamDB(d=>d.filter(t=>t.id!==id)); };
+  const upP=(pid,f,v)=>setDraft(d=>({...d,players:d.players.map(p=>p.id===pid?{...p,[f]:v}:p)}));
+  const addP=()=>{if(draft.players.length>=16)return;setDraft(d=>({...d,players:[...d.players,{id:mkId(),no:'',name:''}]}));};
+  const delP=(pid)=>setDraft(d=>({...d,players:d.players.filter(p=>p.id!==pid)}));
+
+  return (
+    <div className="sc" style={{overflowY:'auto',padding:'16px',maxWidth:720,margin:'0 auto'}}>
+      <div style={{background:'rgba(255,255,255,0.03)',borderRadius:12,padding:'16px',marginBottom:16,border:'1px solid rgba(255,255,255,0.07)'}}>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em',marginBottom:12}}>MATCH SETUP — PILIH TEAM</div>
+        <div className="r2" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          {['A','B'].map(side=><div key={side}>
+            <div style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',marginBottom:6}}>TEAM {side}</div>
+            <select className="sel" value={matchTeams[side]} onChange={e=>setMatchTeams(m=>({...m,[side]:e.target.value}))}>
+              {teamDB.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            {(()=>{const tm=teamDB.find(x=>x.id===matchTeams[side]);if(!tm)return null;return<div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
+              <Badge team={tm} size={28}/>
+              <div>
+                <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:14,color:tm.color}}>{tm.name}</div>
+                <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.35)'}}>{tm.players.length} players</div>
+              </div>
+            </div>;})()}
+          </div>)}
+        </div>
+      </div>
+
+      <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em',marginBottom:10}}>TEAM DATABASE ({teamDB.length})</div>
+      {teamDB.map(t=><div key={t.id} style={{background:'rgba(255,255,255,0.03)',borderRadius:12,marginBottom:8,border:'1px solid '+(editId===t.id?t.color+'50':'rgba(255,255,255,0.06)'),overflow:'hidden'}}>
+        {editId===t.id&&draft
+          ?<div style={{padding:'14px'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:10,marginBottom:12}}>
+              <div><div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:5}}>Team Name</div>
+                <input className="inp" value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))}/></div>
+              <div><div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:5}}>Color</div>
+                <input type="color" value={draft.color} onChange={e=>setDraft(d=>({...d,color:e.target.value}))}
+                  style={{width:52,height:36,borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'transparent',cursor:'pointer',padding:2}}/></div>
+            </div>
+            <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em',marginBottom:8}}>PLAYERS ({draft.players.length}/16)</div>
+            <div className="r2" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:10}}>
+              {draft.players.map(p=><div key={p.id} style={{display:'flex',gap:5,alignItems:'center'}}>
+                <input className="inp" value={p.no} type="number" onChange={e=>upP(p.id,'no',e.target.value)} placeholder="#" style={{width:44,textAlign:'center',padding:'7px 3px',flexShrink:0}}/>
+                <input className="inp" value={p.name} onChange={e=>upP(p.id,'name',e.target.value)} placeholder="Name" style={{flex:1,fontSize:12}}/>
+                <button className="btn" onClick={()=>delP(p.id)} style={{background:'rgba(220,38,38,0.12)',border:'none',borderRadius:6,color:'#F87171',padding:'6px 8px',fontSize:12,flexShrink:0}}>×</button>
+              </div>)}
+            </div>
+            {draft.players.length<16&&<button className="btn" onClick={addP} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,padding:'7px 12px',fontWeight:700,fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:12}}>+ ADD PLAYER</button>}
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn" onClick={saveEdit} style={{flex:1,background:'#059669',borderRadius:10,padding:'9px',fontWeight:900,fontSize:14,color:'white'}}>SAVE</button>
+              <button className="btn" onClick={()=>setEditId(null)} style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'9px',fontWeight:700,fontSize:13,color:'rgba(255,255,255,0.5)'}}>CANCEL</button>
+            </div>
+          </div>
+          :<div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px'}}>
+            <Badge team={t} size={32}/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:15,color:'white'}}>{t.name}</div>
+              <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.35)'}}>{t.players.length} players registered</div>
+            </div>
+            <button className="btn" onClick={()=>startEdit(t)} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12,color:'rgba(255,255,255,0.6)'}}>EDIT</button>
+            <button className="btn" onClick={()=>delTeam(t.id)} style={{background:'rgba(220,38,38,0.1)',border:'none',borderRadius:8,padding:'6px 10px',fontWeight:700,fontSize:12,color:'rgba(252,129,129,0.7)'}}>×</button>
+          </div>
+        }
+      </div>)}
+      <button className="btn" onClick={startNew} style={{width:'100%',padding:'12px',borderRadius:12,background:'rgba(255,255,255,0.05)',border:'1px dashed rgba(255,255,255,0.15)',fontWeight:800,fontSize:13,color:'rgba(255,255,255,0.5)',letterSpacing:'0.1em'}}>+ TAMBAH TEAM BARU</button>
+    </div>
+  );
+}
+
+// ═══ ROOT ═════════════════════════════════════════════════════
+export default function HandballApp() {
+  const [events, dispatch] = useReducer(evReducer, []);
+  const [teamDB, setTeamDB] = useState(DEFAULT_DB);
+  const [matchTeams, setMatchTeams] = useState({A:'ned', B:'nor'});
+  const [matchHistory, setMatchHistory] = useState([]);
+  const [activeTeam, setActiveTeam] = useState('A');
+  const [selZone, setSelZone] = useState(null);
+  const [tab, setTab] = useState('overview');
+  const [wave, setWave] = useState('ALL');
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [actionModal, setActionModal] = useState(null);
+  const mobile = useIsMobile();
+  const clock = useClock();
+
+  const teamA = teamDB.find(t=>t.id===matchTeams.A) || teamDB[0];
+  const teamB = teamDB.find(t=>t.id===matchTeams.B) || teamDB[1];
+  const curTeam = activeTeam==='A' ? teamA : teamB;
+
+  const goalA = events.filter(e=>e.team==='A'&&e.outcome==='GOAL').length;
+  const goalB = events.filter(e=>e.team==='B'&&e.outcome==='GOAL').length;
+  const statsA = useGlobalStats(events,'A','B',wave);
+  const statsB = useGlobalStats(events,'B','A',wave);
+
+  const handleShot = (ev)=>{ dispatch({type:'ADD',ev}); setSelZone(null); };
+  const handleAction = (ev)=>{ dispatch({type:'ADD',ev}); setActionModal(null); };
+  // actionModal = {action:'BLOCK'|'STEAL'|'TO'|'FOUL', teamSide:'A'|'B'} or null
+
+  const confirmEnd = ()=>{
+    setMatchHistory(h=>[{
+      id:Date.now(), date:new Date().toLocaleString(),
+      teamA:{...teamA}, teamB:{...teamB},
+      score:{A:goalA, B:goalB}, events:[...events],
+    },...h]);
+    dispatch({type:'CLEAR'});
+    clock.setSeconds(0); clock.setHalf(1); clock.setRunning(false);
+    setShowEndModal(false);
+    setTab('history');
+  };
+
+  return (
+  <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',flexDirection:'column',fontFamily:'Barlow,sans-serif'}}>
+    <style>{CSS}</style>
+    {showEndModal&&<EndMatchModal teamA={teamA} teamB={teamB} scoreA={goalA} scoreB={goalB} onConfirm={confirmEnd} onCancel={()=>setShowEndModal(false)}/>}
+    {actionModal&&<ActionModal action={actionModal.action} team={actionModal.teamSide==='A'?teamA:teamB} side={actionModal.teamSide} clock={clock} onRecord={handleAction} onCancel={()=>setActionModal(null)}/>}
+
+    {/* HEADER */}
+    <div style={{background:'#0E1528',borderBottom:'1px solid rgba(255,255,255,0.07)',
+      padding:mobile?'6px 10px':'8px 14px',display:'flex',alignItems:'center',gap:mobile?6:10,flexWrap:'wrap'}}>
+      <div style={{flex:1,display:'flex',alignItems:'center',gap:6,justifyContent:'flex-end',minWidth:0}}>
+        {!mobile&&<span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:16,color:'white',whiteSpace:'nowrap'}}>{teamA.name.toUpperCase()}</span>}
+        <Badge team={teamA} size={mobile?24:30}/>
+      </div>
+      <div style={{background:'rgba(255,255,255,0.05)',borderRadius:10,padding:mobile?'3px 10px':'4px 14px',textAlign:'center'}}>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:mobile?26:32,color:'white',lineHeight:1,letterSpacing:3}}>{goalA}–{goalB}</div>
+      </div>
+      <div style={{flex:1,display:'flex',alignItems:'center',gap:6,minWidth:0}}>
+        <Badge team={teamB} size={mobile?24:30}/>
+        {!mobile&&<span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:16,color:'white',whiteSpace:'nowrap'}}>{teamB.name.toUpperCase()}</span>}
+      </div>
+      <Clock clock={clock} mobile={mobile}/>
+      <button className="endbtn" onClick={()=>setShowEndModal(true)}>{mobile?'⏹':'⏹ END MATCH'}</button>
+    </div>
+
+    {/* TABS */}
+    <div style={{background:'#0E1528',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',overflowX:'auto'}}>
+      {[['overview','OVERVIEW'],['attack','ATTACK CHART'],['stats','STATISTICS'],['players','PLAYERS'],['history','HISTORY'],['db','DATABASE']]
+        .map(([id,lbl])=><button key={id} className={`tab ${tab===id?'on':''}`} onClick={()=>setTab(id)}>{lbl}</button>)}
+    </div>
+
+    {tab==='overview'&&<OverviewTab events={events} teamA={teamA} teamB={teamB} clock={clock} scoreA={goalA} scoreB={goalB}/>}
+
+    {/* ATTACK TAB */}
+    {tab==='attack'&&<div style={{flex:1,display:mobile?'flex':'grid',flexDirection:'column',gridTemplateColumns:mobile?'1fr':'1fr 300px',overflow:'hidden',minHeight:0}}>
+      <div style={{padding:mobile?'10px':'12px',display:'flex',flexDirection:'column',gap:9,overflowY:'auto',flex:mobile?1:undefined}}>
+        {/* Waves */}
+        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+          {WAVES.map(w=><button key={w.id} className="wave-btn" onClick={()=>{setWave(w.id);setSelZone(null);}}
+            style={{background:wave===w.id?w.id==='ALL'?'rgba(255,255,255,0.2)':w.color:'rgba(255,255,255,0.06)',
+              border:`1px solid ${wave===w.id?(w.id==='ALL'?'rgba(255,255,255,0.25)':w.color):'rgba(255,255,255,0.07)'}`,
+              opacity:wave===w.id?1:0.6}}>{w.label}</button>)}
+        </div>
+        {/* Team toggle */}
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'0.15em'}}>RECORDING:</span>
+          {['A','B'].map(side=>{const t=side==='A'?teamA:teamB;return<button key={side} className="btn"
+            onClick={()=>{setActiveTeam(side);setSelZone(null);}}
+            style={{background:activeTeam===side?t.color:'rgba(255,255,255,0.06)',
+              border:`1px solid ${activeTeam===side?t.color:'rgba(255,255,255,0.08)'}`,
+              borderRadius:8,padding:'5px 12px',display:'flex',alignItems:'center',gap:5}}>
+            <Badge team={t} size={14}/>
+            <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:12,color:'white'}}>{t.name.toUpperCase()}</span>
+          </button>;})}
+          <div style={{flex:1}}/>
+          <button className="btn" onClick={()=>dispatch({type:'UNDO'})}
+            style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(220,38,38,0.2)',borderRadius:8,padding:'5px 10px',fontWeight:700,fontSize:11,color:'rgba(252,129,129,0.7)'}}>↶ UNDO</button>
+        </div>
+        {/* Court */}
+        <div style={{maxWidth:580,width:'100%',alignSelf:'center'}}>
+          <CourtSVG events={events} teamA={teamA} teamB={teamB} activeTeam={activeTeam}
+            onZoneClick={setSelZone} selZone={selZone} wave={wave} mobile={mobile}/>
+        </div>
+        {/* Quick action buttons — Cara A (context-aware auto-assign) */}
+        {(()=>{
+          const oppSide = activeTeam==='A'?'B':'A';
+          const oppTeam = activeTeam==='A'?teamB:teamA;
+          // BLOCK/STEAL → opponent gets credit | TO/FOUL → attacking team gets credit
+          const actions = [
+            {action:'BLOCK',  icon:'🛡', label:'BLOCK',    teamSide:oppSide,    assignTo:oppTeam,  bg:'rgba(59,130,246,0.12)', border:'rgba(59,130,246,0.3)', col:'#93C5FD', hint:'defender'},
+            {action:'STEAL',  icon:'🤚', label:'STEAL',    teamSide:oppSide,    assignTo:oppTeam,  bg:'rgba(16,185,129,0.12)', border:'rgba(16,185,129,0.3)', col:'#6EE7B7', hint:'defender'},
+            {action:'TO',     icon:'↻',  label:'TURNOVER', teamSide:activeTeam, assignTo:curTeam,  bg:'rgba(245,158,11,0.12)', border:'rgba(245,158,11,0.3)', col:'#FCD34D', hint:'attacker'},
+            {action:'FOUL',   icon:'⚠',  label:'FOUL',     teamSide:activeTeam, assignTo:curTeam,  bg:'rgba(220,38,38,0.12)',  border:'rgba(220,38,38,0.3)',  col:'#FCA5A5', hint:'attacker'},
+          ];
+          return actions.map(({action,icon,label,teamSide,assignTo,bg,border,col,hint})=>(
+            <button key={action} className="btn" onClick={()=>setActionModal({action,teamSide})}
+              style={{background:bg,border:'1px solid '+border,borderRadius:10,padding:'8px 10px',
+                display:'flex',alignItems:'center',gap:8,width:'100%',textAlign:'left'}}>
+              <span style={{fontSize:18,minWidth:22}}>{icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:13,color:col,letterSpacing:'0.08em'}}>{label}</div>
+                <div style={{display:'flex',alignItems:'center',gap:4,marginTop:2}}>
+                  <span style={{fontFamily:'Barlow',fontSize:9,color:'rgba(255,255,255,0.3)'}}>→</span>
+                  <Badge team={assignTo} size={12}/>
+                  <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:10,color:assignTo.color}}>{assignTo.name.toUpperCase()}</span>
+                  <span style={{fontFamily:'Barlow',fontSize:9,color:'rgba(255,255,255,0.25)'}}>({hint})</span>
+                </div>
+              </div>
+            </button>
+          ));
+        })()}
+        {/* Label */}
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <Badge team={curTeam} size={20}/>
+          <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:14,color:'white'}}>{curTeam.name.toUpperCase()}</span>
+          <div className="pill" style={{borderRadius:5,padding:'2px 10px',fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'white',letterSpacing:'0.18em'}}>ATTACK CHART</div>
+        </div>
+      </div>
+      {/* Right panel — desktop */}
+      {!mobile&&<div style={{background:'#0E1528',borderLeft:'1px solid rgba(255,255,255,0.07)',padding:'14px',overflowY:'auto'}}>
+        {selZone
+          ?<ShotPanel zone={selZone} team={curTeam} side={activeTeam} wave={wave} clock={clock}
             onRecord={handleShot} onCancel={()=>setSelZone(null)}/>
           :<><div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.28)',letterSpacing:'0.2em',marginBottom:12}}>
               {curTeam.name.toUpperCase()} SUMMARY{wave!=='ALL'?` — ${WAVES.find(w=>w.id===wave)?.label}`:''}
@@ -883,5 +1177,6 @@ curTeam} side={activeTeam} wave={wave} clock={clock}
     {tab==='players'&&<PlayersTab events={events} teamA={teamA} teamB={teamB} mobile={mobile}/>}
     {tab==='history'&&<HistoryTab events={events} teamA={teamA} teamB={teamB} matchHistory={matchHistory} dispatch={dispatch}/>}
     {tab==='db'&&<DatabaseTab teamDB={teamDB} setTeamDB={setTeamDB} matchTeams={matchTeams} setMatchTeams={setMatchTeams}/>}
-  </div>;
+  </div>
+  );
 }
