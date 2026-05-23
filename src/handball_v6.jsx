@@ -2220,14 +2220,6 @@ export default function HandballApp() {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
 
-  // Detect password recovery URL (#access_token=...&type=recovery)
-  useEffect(()=>{
-    const hash = window.location.hash;
-    if (hash.includes('type=recovery')) {
-      setAuthState('recovery');
-    }
-  },[]);
-
   const checkAuth = async ()=>{
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -2250,20 +2242,31 @@ export default function HandballApp() {
   };
 
   useEffect(()=>{
-    // Skip checkAuth if we're in recovery mode
-    if (authState === 'recovery') return;
-    checkAuth();
+    // Check if we're in password recovery flow FIRST
+    const isRecovery = window.location.hash.includes('type=recovery');
+    if (isRecovery) {
+      setAuthState('recovery');
+    } else {
+      checkAuth();
+    }
+
     const { data: { subscription: listener } } = supabase.auth.onAuthStateChange((event)=>{
+      // CRITICAL: If URL still has recovery hash, lock to recovery mode
+      // (don't let SIGNED_IN event override it)
+      if (window.location.hash.includes('type=recovery')) {
+        setAuthState('recovery');
+        return;
+      }
       if (event==='SIGNED_OUT') {
         setUser(null); setSubscription(null); setAuthState('unauth');
       } else if (event==='PASSWORD_RECOVERY') {
         setAuthState('recovery');
       } else if (event==='SIGNED_IN' || event==='TOKEN_REFRESHED') {
-        if (authState !== 'recovery') checkAuth();
+        checkAuth();
       }
     });
     return ()=>listener?.unsubscribe();
-  },[authState]);
+  },[]);
 
   const handleLogout = async ()=>{
     await supabase.auth.signOut();
