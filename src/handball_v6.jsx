@@ -1978,7 +1978,10 @@ function AuthScreen({onSuccess}) {
     if (!email) { setError('Sila masukkan email anda dulu'); return; }
     setError(''); setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const redirectUrl = window.location.origin + window.location.pathname;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl,
+      });
       if (error) throw error;
       setInfo('Link reset password telah dihantar ke email anda');
     } catch(err) { setError(err.message); }
@@ -2145,11 +2148,85 @@ function PaywallScreen({user, subscription, onLogout}) {
   );
 }
 
+function PasswordResetScreen({onComplete}) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleReset = async (e)=>{
+    e.preventDefault();
+    if (password !== confirm) { setError('Password tidak sama'); return; }
+    if (password.length < 6) { setError('Password mesti sekurang-kurangnya 6 aksara'); return; }
+    setError(''); setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      // Clear URL hash so user doesn't get stuck
+      window.history.replaceState(null, '', window.location.pathname);
+      alert('✓ Password berjaya direset! Sila login dengan password baru.');
+      await supabase.auth.signOut();
+      onComplete();
+    } catch(err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'Barlow,sans-serif'}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap');`}</style>
+      <div style={{background:'linear-gradient(180deg, rgba(255,61,189,0.05), transparent)',width:'100%',maxWidth:420,borderRadius:18,padding:'30px 28px',border:'1px solid rgba(255,255,255,0.08)',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
+        <div style={{textAlign:'center',marginBottom:24}}>
+          <div style={{display:'inline-block',background:'linear-gradient(135deg,#FF3DBD,#9B2BFB)',
+            width:54,height:54,borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:28,marginBottom:14,boxShadow:'0 4px 16px rgba(255,61,189,0.3)'}}>🔒</div>
+          <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:22,color:'white',letterSpacing:'0.02em'}}>
+            RESET PASSWORD
+          </div>
+          <div style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.4)',marginTop:4}}>
+            Set password baru anda
+          </div>
+        </div>
+
+        <form onSubmit={handleReset}>
+          <div style={{marginBottom:12}}>
+            <label style={{display:'block',fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>Password Baru</label>
+            <input type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Min. 6 aksara" required minLength={6} style={inpStyle}/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:'block',fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>Confirm Password</label>
+            <input type={showPwd?'text':'password'} value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="Ulang password baru" required style={inpStyle}/>
+            <button type="button" onClick={()=>setShowPwd(!showPwd)} style={{background:'none',border:'none',color:'#FF93D7',fontSize:11,cursor:'pointer',marginTop:6,padding:0,fontFamily:'Barlow'}}>
+              {showPwd?'Sembunyi password':'Tunjuk password'}
+            </button>
+          </div>
+          {error&&<div style={{background:'rgba(220,38,38,0.12)',border:'1px solid rgba(220,38,38,0.3)',borderRadius:8,padding:'8px 12px',color:'#FCA5A5',fontSize:12,fontFamily:'Barlow',marginBottom:12}}>⚠ {error}</div>}
+          <button type="submit" disabled={loading}
+            style={{width:'100%',padding:'12px',borderRadius:10,border:'none',cursor:loading?'wait':'pointer',
+              background:'linear-gradient(90deg,#FF3DBD,#9B2BFB)',
+              fontFamily:'Barlow Condensed',fontWeight:900,fontSize:14,color:'white',letterSpacing:'0.1em',
+              boxShadow:'0 4px 16px rgba(255,61,189,0.3)',opacity:loading?0.6:1}}>
+            {loading?'PROCESSING...':'SET PASSWORD BARU'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ═══ ROOT WRAPPER (Auth + Subscription Check) ═════════════════
 export default function HandballApp() {
-  const [authState, setAuthState] = useState('loading'); // 'loading' | 'unauth' | 'expired' | 'ok'
+  const [authState, setAuthState] = useState('loading'); // 'loading' | 'unauth' | 'expired' | 'ok' | 'recovery'
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
+
+  // Detect password recovery URL (#access_token=...&type=recovery)
+  useEffect(()=>{
+    const hash = window.location.hash;
+    if (hash.includes('type=recovery')) {
+      setAuthState('recovery');
+    }
+  },[]);
 
   const checkAuth = async ()=>{
     try {
@@ -2173,22 +2250,27 @@ export default function HandballApp() {
   };
 
   useEffect(()=>{
+    // Skip checkAuth if we're in recovery mode
+    if (authState === 'recovery') return;
     checkAuth();
     const { data: { subscription: listener } } = supabase.auth.onAuthStateChange((event)=>{
       if (event==='SIGNED_OUT') {
         setUser(null); setSubscription(null); setAuthState('unauth');
+      } else if (event==='PASSWORD_RECOVERY') {
+        setAuthState('recovery');
       } else if (event==='SIGNED_IN' || event==='TOKEN_REFRESHED') {
-        checkAuth();
+        if (authState !== 'recovery') checkAuth();
       }
     });
     return ()=>listener?.unsubscribe();
-  },[]);
+  },[authState]);
 
   const handleLogout = async ()=>{
     await supabase.auth.signOut();
     setAuthState('unauth');
   };
 
+  if (authState==='recovery') return <PasswordResetScreen onComplete={()=>setAuthState('unauth')}/>;
   if (authState==='loading') return <LoadingScreen msg="Loading..."/>;
   if (authState==='unauth')  return <AuthScreen onSuccess={checkAuth}/>;
   if (authState==='expired') return <PaywallScreen user={user} subscription={subscription} onLogout={handleLogout}/>;
