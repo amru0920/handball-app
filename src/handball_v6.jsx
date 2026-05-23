@@ -1242,6 +1242,326 @@ const PRICING_TXT = {
   }
 };
 
+// ═══ TUTORIAL TAB ═══════════════════════════════════════════════
+const MODULES = [
+  {id:'start', icon:'🚀', label:{BM:'Mula Cepat',EN:'Quick Start'}, col:'#FF3DBD'},
+  {id:'setup', icon:'👥', label:{BM:'Setup Team',EN:'Team Setup'}, col:'#3B82F6'},
+  {id:'record', icon:'🎯', label:{BM:'Recording',EN:'Recording'}, col:'#34D399'},
+  {id:'stats', icon:'📊', label:{BM:'Statistik',EN:'Statistics'}, col:'#F59E0B'},
+  {id:'account', icon:'☁️', label:{BM:'Akaun',EN:'Account'}, col:'#A855F7'},
+];
+
+const STEPS = {
+  start:[
+    {badge:'PENGENALAN', title:{BM:'Selamat Datang ke Handball Analysis!',EN:'Welcome to Handball Analysis!'},
+     desc:{BM:'App ini direka untuk coach dan pengadil bola baling — rakam data match secara masa nyata, analisis statistik, dan simpan rekod perlawanan dalam cloud.',
+           EN:'This app is designed for handball coaches and referees — record match data in real-time, analyze statistics, and store match records in the cloud.'},
+     tip:{BM:'Berfungsi pada mobile dan desktop. Sesuai guna semasa game berlangsung.',EN:'Works on mobile and desktop. Ideal for use during live games.'},
+     vis:'welcome'},
+    {badge:'NAVIGASI', title:{BM:'7 Tab Utama',EN:'7 Main Tabs'},
+     desc:{BM:'App dibahagi kepada 7 bahagian. Setiap tab ada fungsi tersendiri.',EN:'The app is divided into 7 sections. Each tab has its own function.'},
+     vis:'tabs',
+     cards:{BM:[['📺','Tutorial','Panduan ini'],['OVERVIEW','Overview','Skor & ringkasan'],['ATTACK','Attack Chart','Record game'],['STATS','Statistics','Data terperinci'],['PLAYERS','Players','Stat individu'],['HISTORY','History','Rekod lama'],['⚙️','Team Setup','Urus pasukan']],
+            EN:[['📺','Tutorial','This guide'],['OVERVIEW','Overview','Score & summary'],['ATTACK','Attack Chart','Record game'],['STATS','Statistics','Detailed data'],['PLAYERS','Players','Individual stats'],['HISTORY','History','Past records'],['⚙️','Team Setup','Manage teams']]}},
+    {badge:'FLOW HARIAN', title:{BM:'Aliran Kerja Coach',EN:'Coach Workflow'},
+     desc:{BM:'Setup → Record → Analisis → Save. Ikut turutan ni setiap kali ada match.',EN:'Setup → Record → Analyze → Save. Follow this sequence for every match.'},
+     vis:'flow',
+     tip:{BM:'Data disimpan cloud automatik bila "End Match" — selamat walaupun telefon flat.',EN:'Data auto-saves to cloud when "End Match" — safe even if your phone dies.'}},
+  ],
+  setup:[
+    {badge:'TEAM SETUP', title:{BM:'Buka Tab Team Setup',EN:'Open Team Setup Tab'},
+     desc:{BM:'Pergi tab ⚙️ TEAM SETUP untuk urus semua pasukan dan pemain. Wajib setup sebelum mulakan match.',EN:'Go to ⚙️ TEAM SETUP tab to manage all teams and players. Must set up before starting a match.'},
+     vis:'teamsetup'},
+    {badge:'TEAM SETUP', title:{BM:'Tambah Team Baru',EN:'Add New Team'},
+     desc:{BM:'Klik "＋ TAMBAH TEAM" untuk buat pasukan baru. Masukkan nama pasukan dan pilih warna team. Warna ini akan muncul dalam semua statistik dan laporan.',EN:'Click "+ ADD TEAM" to create a new team. Enter team name and choose team color. This color appears in all statistics and reports.'},
+     vis:'addteam',
+     tip:{BM:'Pilih warna yang kontras antara dua pasukan supaya mudah bezakan dalam chart.',EN:'Choose contrasting colors between teams for easy differentiation in charts.'}},
+    {badge:'TEAM SETUP', title:{BM:'Tambah Pemain',EN:'Add Players'},
+     desc:{BM:'Expand team → klik "＋ PEMAIN". Masukkan no jersi dan nama. Pemain ini akan muncul dalam senarai semasa recording untuk track siapa yang score.',EN:'Expand team → click "+ PLAYER". Enter jersey number and name. These players appear during recording to track who scores.'},
+     vis:'addplayer'},
+    {badge:'TEAM SETUP', title:{BM:'Tetapkan Pasukan Match',EN:'Set Match Teams'},
+     desc:{BM:'Scroll ke bahagian "MATCH SEKARANG" — pilih Team A dan Team B. Ini menentukan pasukan mana yang bertanding dalam match semasa.',EN:'Scroll to "CURRENT MATCH" section — select Team A and Team B. This sets which teams are competing in the current match.'},
+     vis:'setmatch',
+     tip:{BM:'Boleh tukar pasukan sebelum mula sahaja — tak boleh tukar semasa match sedang berjalan.',EN:'Teams can only be changed before starting — cannot change during an active match.'}},
+  ],
+  record:[
+    {badge:'RECORDING', title:{BM:'Wave System — Fasa Serangan',EN:'Wave System — Attack Phase'},
+     desc:{BM:'Wave menentukan fasa serangan. Pilih wave yang betul sebelum record tembakan untuk analisis lebih tepat.',EN:'Wave determines the attack phase. Select the correct wave before recording shots for more precise analysis.'},
+     vis:'wave',
+     cards:{BM:[['1ST','Fastbreak','Selepas rampasan bola terus ke gol'],['2ND','Counter','Serangan balas peralihan'],['3RD','Set Play','Serangan tersusun half-court'],['ALL','Semua','Tak filter wave']],
+            EN:[['1ST','Fastbreak','Directly to goal after stealing'],['2ND','Counter','Transitional counter-attack'],['3RD','Set Play','Organized half-court attack'],['ALL','All','No wave filter']]}},
+    {badge:'RECORDING', title:{BM:'10 Zone Tembakan di Court',EN:'10 Shooting Zones on Court'},
+     desc:{BM:'Court dibahagi 10 zone. Klik mana-mana zone untuk record tembakan dari posisi itu. App akan tanya: Goal, Miss, atau Save?',EN:'The court is divided into 10 zones. Click any zone to record a shot from that position. The app will ask: Goal, Miss, or Save?'},
+     vis:'court',
+     tip:{BM:'BREAK = pintu masuk. SEVEN = 7-meter throw (penalti). WING = hujung. BACK = belakang.',EN:'BREAK = breakthrough. SEVEN = 7-meter throw (penalty). WING = sides. BACK = back court.'}},
+    {badge:'RECORDING', title:{BM:'Goal / Miss / Save',EN:'Goal / Miss / Save'},
+     desc:{BM:'Selepas klik zone, pop-up muncul untuk pilih hasil tembakan. Pilih pemain (optional) dan assistant (optional) sebelum confirm.',EN:'After clicking a zone, a popup appears to select the shot result. Choose player (optional) and assistant (optional) before confirming.'},
+     vis:'shotresult',
+     cards:{BM:[['✅','GOAL','Bola masuk gol'],['❌','MISS','Tembak tapi meleset/terkena bar'],['🧤','SAVE','Penjaga gol sekat bola']],
+            EN:[['✅','GOAL','Ball enters the goal'],['❌','MISS','Shot missed or hit the bar'],['🧤','SAVE','Goalkeeper blocked the ball']]}},
+    {badge:'RECORDING', title:{BM:'Block dan Steal',EN:'Block and Steal'},
+     desc:{BM:'Guna butang BLOCK atau STEAL untuk record aksi pertahanan. Pilih pasukan mana yang buat aksi — app akan auto-kira dalam statistik pertahanan.',EN:'Use BLOCK or STEAL buttons to record defensive actions. Select which team made the action — the app auto-calculates in defensive statistics.'},
+     vis:'blocksteal',
+     cards:{BM:[['🛡️','BLOCK','Pengadang sekat tembakan sebelum masuk gol'],['🤚','STEAL','Rampas bola dari tangan lawan']],
+            EN:[['🛡️','BLOCK','Defender blocks shot before goal'],['🤚','STEAL','Takes ball away from opponent']]}},
+    {badge:'RECORDING', title:{BM:'Turnover — Hilang Bola',EN:'Turnover — Ball Loss'},
+     desc:{BM:'Klik TURNOVER bila pasukan hilang bola tanpa tembakan. Pilih jenis kehilangan untuk analisis kelemahan pasukan.',EN:'Click TURNOVER when a team loses the ball without a shot. Select the type of loss to analyze team weaknesses.'},
+     vis:'turnover',
+     cards:{BM:[['🎯','Bad Pass','Hantaran salah'],['👟','Off Foul','Foul ofensif'],['🚶','Traveling','Langkah'],['✌️','Double','Double dribble'],['⚠️','Technical','Kesalahan teknikal'],['📦','Other','Lain-lain']],
+            EN:[['🎯','Bad Pass','Wrong pass'],['👟','Off Foul','Offensive foul'],['🚶','Traveling','Traveling violation'],['✌️','Double','Double dribble'],['⚠️','Technical','Technical error'],['📦','Other','Other']]}},
+    {badge:'RECORDING', title:{BM:'Foul dan Kad Disiplin',EN:'Foul and Disciplinary Cards'},
+     desc:{BM:'Klik FOUL → pilih pasukan → pilih pemain → pilih jenis kad. Semua kad akan muncul dalam bahagian statistik dan laporan match.',EN:'Click FOUL → select team → select player → select card type. All cards appear in statistics and match report.'},
+     vis:'foul',
+     cards:{BM:[['⚠️','Warning','Amaran (kuning kecil)'],['⏱️','2-Min','Hukuman 2 minit'],['🟨','Yellow','Kad kuning'],['🟥','Red','Kad merah, disingkir']],
+            EN:[['⚠️','Warning','Warning card (small yellow)'],['⏱️','2-Min','2-minute suspension'],['🟨','Yellow','Yellow card'],['🟥','Red','Red card, ejected']]}},
+    {badge:'RECORDING', title:{BM:'Match Clock',EN:'Match Clock'},
+     desc:{BM:'Clock terletak dalam tab Attack Chart. Guna butang ini untuk kawalan masa perlawanan semasa recording.',EN:'Clock is located in the Attack Chart tab. Use these buttons to control match time during recording.'},
+     vis:'clock',
+     cards:{BM:[['▶','Play/Pause','Mula/Berhenti jam'],['↩','Reset','Tetap semula ke 0:00'],['⏭','Next Half','Tukar ke separuh masa seterusnya'],['✏️','Edit','Klik nombor jam untuk set masa manual']],
+            EN:[['▶','Play/Pause','Start/stop the clock'],['↩','Reset','Reset back to 0:00'],['⏭','Next Half','Switch to next half'],['✏️','Edit','Click clock number to set manually']]}},
+    {badge:'RECORDING', title:{BM:'Undo — Buat Balik',EN:'Undo — Reverse Action'},
+     desc:{BM:'Tertekan salah? Klik ↶ UNDO untuk padam event terakhir. Hanya boleh undo satu step ke belakang.',EN:'Pressed the wrong thing? Click ↶ UNDO to delete the last event. Only one step back.'},
+     vis:'undo',
+     tip:{BM:'Undo hanya padam event terakhir. Kalau dah undo, tak boleh redo. Semak sebelum undo.',EN:'Undo only deletes the last event. Cannot redo after undo. Check before undoing.'}},
+  ],
+  stats:[
+    {badge:'STATISTIK', title:{BM:'Overview — Ringkasan Match',EN:'Overview — Match Summary'},
+     desc:{BM:'Tab OVERVIEW tunjuk skor semasa, bar perbandingan utama, top scorers, dan butang print laporan. Ini pandangan pantas untuk semak status match.',EN:'OVERVIEW tab shows current score, main comparison bars, top scorers, and print report button. Quick view to check match status.'},
+     vis:'overview'},
+    {badge:'FORMULA', title:{BM:'Shooting % — Peratusan Tembakan',EN:'Shooting % — Shot Percentage'},
+     desc:{BM:'Menunjukkan keberkesanan tembakan pasukan — berapa peratus tembakan yang berjaya jadi gol.',EN:'Shows team shooting effectiveness — what percentage of shots successfully scored.'},
+     vis:'formula_shoot',
+     formula:'Shooting % = (Goals ÷ Total Shots) × 100',
+     example:{BM:'Contoh: KEDAH 5 gol / 11 tembakan = 45%',EN:'Example: KEDAH 5 goals / 11 shots = 45%'}},
+    {badge:'FORMULA', title:{BM:'Attack Efficiency — Kecekapan Serangan',EN:'Attack Efficiency — Attack Effectiveness'},
+     desc:{BM:'Lebih komprehensif dari Shooting %. Kira semua serangan termasuk turnover — berapa kali pasukan habiskan peluang jadi gol.',EN:'More comprehensive than Shooting %. Counts all attacks including turnovers — how often a team converts possession to goals.'},
+     vis:'formula_attack',
+     formula:'Attack Eff = Goals ÷ (Shots + Turnovers) × 100',
+     example:{BM:'Contoh: 5 gol / (11 shots + 3 TO) = 35%',EN:'Example: 5 goals / (11 shots + 3 TO) = 35%'}},
+    {badge:'STATISTIK', title:{BM:'Player Stats — Statistik Individu',EN:'Player Stats — Individual Statistics'},
+     desc:{BM:'Tab PLAYERS tunjuk sumbangan setiap pemain dalam match. Setiap kolumn bermaksud sesuatu yang spesifik.',EN:'PLAYERS tab shows each player\'s contribution in the match. Each column means something specific.'},
+     vis:'playerstats',
+     cards:{BM:[['G','Goals','Jumlah gol'],['A','Assists','Bantu gol rakan'],['Sh','Shots','Total tembakan'],['TO','Turnovers','Hilang bola'],['BL','Blocks','Sekat tembakan'],['ST','Steals','Rampas bola'],['2\'','2-Min','Hukuman 2 minit'],['YC','Yellow','Kad kuning'],['RC','Red','Kad merah']],
+            EN:[['G','Goals','Total goals'],['A','Assists','Assisted teammate goals'],['Sh','Shots','Total shots'],['TO','Turnovers','Ball losses'],['BL','Blocks','Blocked shots'],['ST','Steals','Ball steals'],['2\'','2-Min','2-min suspension'],['YC','Yellow','Yellow cards'],['RC','Red','Red cards']]}},
+    {badge:'HISTORY', title:{BM:'Postmortem — Analisis Match Lama',EN:'Postmortem — Past Match Analysis'},
+     desc:{BM:'Pergi tab HISTORY → klik 📂 BUKA MATCH → semua tab (Statistics, Players, Overview) akan tunjuk data match lama. Boleh print laporan juga.',EN:'Go to HISTORY tab → click 📂 OPEN MATCH → all tabs (Statistics, Players, Overview) will show past match data. Can also print report.'},
+     vis:'history',
+     tip:{BM:'Bila dalam Viewing Mode, banner ungu muncul atas. Klik ✕ EXIT VIEW untuk keluar.',EN:'When in Viewing Mode, a purple banner appears at top. Click ✕ EXIT VIEW to exit.'}},
+    {badge:'LAPORAN', title:{BM:'Print Match Report',EN:'Print Match Report'},
+     desc:{BM:'Pergi OVERVIEW → klik 🖨️ PRINT MATCH REPORT. Browser akan buka print dialog. Laporan A4 merangkumi: skor, perbandingan utama, analisis serangan, separuh masa, kad disiplin, dan statistik pemain.',EN:'Go to OVERVIEW → click 🖨️ PRINT MATCH REPORT. Browser opens print dialog. A4 report includes: score, main comparison, attack analysis, halftime, discipline, and player stats.'},
+     vis:'printreport'},
+  ],
+  account:[
+    {badge:'AKAUN', title:{BM:'Trial 30 Hari Percuma',EN:'30-Day Free Trial'},
+     desc:{BM:'Setiap akaun baru dapat trial 30 hari — akses PENUH semua features. Tiada kad kredit diperlukan. Countdown hari trial muncul di atas app.',EN:'Every new account gets 30-day trial — FULL access to all features. No credit card required. Trial countdown appears at the top of the app.'},
+     vis:'trial',
+     tip:{BM:'Bila tinggal 7 hari, banner akan jadi MERAH sebagai amaran. Pergi tab PRICING untuk upgrade.',EN:'When 7 days remain, the banner turns RED as a warning. Go to PRICING tab to upgrade.'}},
+    {badge:'CLOUD', title:{BM:'Cloud Sync — Data Selamat',EN:'Cloud Sync — Safe Data'},
+     desc:{BM:'Setiap kali awak "End Match", data auto-save ke cloud. Indicator ☁️ SAVING akan muncul atas. Bila ✓ SAVED muncul — data selamat dalam server.',EN:'Every time you "End Match", data auto-saves to cloud. ☁️ SAVING indicator appears at top. When ✓ SAVED appears — data is safe on server.'},
+     vis:'cloudsync',
+     tip:{BM:'Login dari mana-mana device — semua match history akan load dari cloud automatik.',EN:'Login from any device — all match history will load from cloud automatically.'}},
+    {badge:'AKAUN', title:{BM:'Lupa Password?',EN:'Forgot Password?'},
+     desc:{BM:'Skrin login ada butang "Lupa password?". Masukkan email → check inbox → klik link reset → set password baru. Link hanya valid 1 jam.',EN:'Login screen has "Forgot password?" button. Enter email → check inbox → click reset link → set new password. Link valid for 1 hour only.'},
+     vis:'resetpwd',
+     tip:{BM:'Mesti guna link dari email TERBARU sahaja. Link lama tak boleh guna semula.',EN:'Must use link from the LATEST email only. Old links cannot be reused.'}},
+    {badge:'AKAUN', title:{BM:'Log Out & Tukar Akaun',EN:'Log Out & Switch Account'},
+     desc:{BM:'Pergi tab 💎 PRICING → scroll ke atas → ada card akaun dengan butang LOG OUT. Klik untuk keluar dari akaun semasa.',EN:'Go to 💎 PRICING tab → scroll to top → account card with LOG OUT button. Click to sign out of current account.'},
+     vis:'logout'},
+  ],
+};
+
+function TutorialVisual({type}) {
+  const vs = { width:'100%', height:150, viewBox:'0 0 320 150' };
+  const bg = { fill:'rgba(0,0,0,0.25)', rx:10 };
+  switch(type) {
+    case 'welcome': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      <circle cx={160} cy={60} r={38} fill="rgba(255,61,189,0.12)" stroke="rgba(255,61,189,0.3)" strokeWidth={2}/>
+      <text x={160} y={67} textAnchor="middle" fill="#FF93D7" fontSize={32}>🤾</text>
+      <text x={160} y={105} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>HANDBALL ANALYSIS</text>
+      <text x={160} y={123} textAnchor="middle" fill="rgba(255,255,255,0.45)" fontSize={10}>Rakam · Analisis · Simpan</text>
+    </svg>;
+    case 'tabs': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      {[['📺',20],['OV',62],['AT',104],['ST',146],['PL',188],['HI',230],['⚙️',272]].map(([l,x],i)=>
+        <g key={i}><rect x={x} y={55} width={38} height={38} rx={6} fill={i===0?'rgba(255,61,189,0.25)':'rgba(255,255,255,0.05)'} stroke={i===0?'rgba(255,61,189,0.5)':'rgba(255,255,255,0.08)'} strokeWidth={1}/>
+        <text x={x+19} y={79} textAnchor="middle" fill={i===0?'#FF93D7':'rgba(255,255,255,0.6)'} fontSize={i<2?14:9} fontWeight={600}>{l}</text></g>)}
+      <text x={160} y={125} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={9}>7 tab utama — pilih fungsi yang diperlukan</text>
+    </svg>;
+    case 'flow': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      {[['⚙️ Setup',30,'#3B82F6'],['🎯 Record',110,'#FF3DBD'],['📊 Analisis',190,'#34D399'],['💾 Save',270,'#F59E0B']].map(([l,x,c],i)=><g key={i}>
+        <rect x={x-28} y={55} width={56} height={36} rx={7} fill={`${c}22`} stroke={c} strokeWidth={1}/>
+        <text x={x} y={78} textAnchor="middle" fill={c} fontSize={9} fontWeight={600}>{l}</text>
+        {i<3&&<text x={x+37} y={76} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={14}>›</text>}
+      </g>)}
+      <text x={160} y={120} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={9}>Turutan setiap match</text>
+    </svg>;
+    case 'court': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.25)"/>
+      {[['WING L',55,45,'#FF3DBD'],['BREAK',160,38,'#34D399'],['WING R',265,45,'#FF3DBD'],
+        ['PIV L',90,85,'#FF93D7'],['PIV C',160,78,'#FF93D7'],['PIV R',230,85,'#FF93D7'],
+        ['7M',160,112,'#FBBF24'],
+        ['BACK L',70,128,'#A855F7'],['BACK C',160,128,'#A855F7'],['BACK R',250,128,'#A855F7']].map(([l,x,y,c],i)=>
+        <g key={i}><circle cx={x} cy={y} r={l==='7M'?8:20} fill={`${c}20`} stroke={c} strokeWidth={1.5}/>
+        <text x={x} y={y+3} textAnchor="middle" fill={c} fontSize={l==='7M'?7:7} fontWeight={700}>{l}</text></g>)}
+      <text x={160} y={18} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10} fontWeight={600}>10 ZONE TEMBAKAN</text>
+    </svg>;
+    case 'wave': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      {[['ALL',30,'#888'],['1ST',100,'#FF3DBD'],['2ND',185,'#3B82F6'],['3RD',260,'#34D399']].map(([l,x,c])=>
+        <g key={l}><rect x={x-30} y={50} width={60} height={50} rx={8} fill={`${c}22`} stroke={c} strokeWidth={1.5}/>
+        <text x={x} y={80} textAnchor="middle" fill={c} fontSize={14} fontWeight={800}>{l}</text></g>)}
+      <text x={100} y={122} textAnchor="middle" fill="rgba(255,61,189,0.8)" fontSize={8}>Fastbreak</text>
+      <text x={185} y={122} textAnchor="middle" fill="rgba(59,130,246,0.8)" fontSize={8}>Counter</text>
+      <text x={260} y={122} textAnchor="middle" fill="rgba(52,211,153,0.8)" fontSize={8}>Set Play</text>
+    </svg>;
+    case 'shotresult': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      {[['✅ GOAL',60,'#34D399'],['❌ MISS',160,'#EF4444'],['🧤 SAVE',260,'#3B82F6']].map(([l,x,c])=>
+        <g key={l}><rect x={x-45} y={50} width={90} height={48} rx={9} fill={`${c}18`} stroke={c} strokeWidth={2}/>
+        <text x={x} y={80} textAnchor="middle" fill={c} fontSize={11} fontWeight={700}>{l}</text></g>)}
+      <text x={160} y={125} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={9}>Pilih selepas klik zone di court</text>
+    </svg>;
+    case 'formula_shoot': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      <rect x={20} y={35} width={280} height={48} rx={8} fill="rgba(255,61,189,0.08)" stroke="rgba(255,61,189,0.25)" strokeWidth={1}/>
+      <text x={160} y={65} textAnchor="middle" fill="#FF93D7" fontSize={13} fontWeight={600}>Shooting % = Goals ÷ Shots × 100</text>
+      <rect x={60} y={100} width={90} height={36} rx={7} fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth={1}/>
+      <text x={105} y={121} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>5 ÷ 11 × 100</text>
+      <text x={195} y={105} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={18}>＝</text>
+      <rect x={220} y={100} width={60} height={36} rx={7} fill="rgba(52,211,153,0.1)" stroke="rgba(52,211,153,0.3)" strokeWidth={1}/>
+      <text x={250} y={121} textAnchor="middle" fill="#34D399" fontSize={14} fontWeight={700}>45%</text>
+    </svg>;
+    case 'formula_attack': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      <rect x={10} y={35} width={300} height={48} rx={8} fill="rgba(245,158,11,0.08)" stroke="rgba(245,158,11,0.25)" strokeWidth={1}/>
+      <text x={160} y={58} textAnchor="middle" fill="#F59E0B" fontSize={11} fontWeight={600}>Attack Eff = Goals ÷ (Shots + TO) × 100</text>
+      <text x={160} y={75} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={9}>Termasuk turnover — lebih komprehensif</text>
+      <text x={160} y={118} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>5 ÷ (11 + 3) × 100 = <tspan fill="#34D399" fontWeight={700}>35%</tspan></text>
+    </svg>;
+    case 'foul': return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      {[['⚠️ Warning',60,'#888888'],['⏱️ 2-Min',160,'#F59E0B'],['🟨 Yellow',220,'#EAB308'],['🟥 Red',275,'#EF4444']].map(([l,x,c])=>
+        <g key={l}><rect x={x-32} y={50} width={64} height={42} rx={7} fill={`${c}18`} stroke={c} strokeWidth={1.5}/>
+        <text x={x} y={75} textAnchor="middle" fill={c} fontSize={9} fontWeight={600}>{l}</text></g>)}
+    </svg>;
+    default: return <svg {...vs}><rect x={0} y={0} width={320} height={150} rx={10} fill="rgba(0,0,0,0.2)"/>
+      <text x={160} y={80} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={12}>Visual</text></svg>;
+  }
+}
+
+function TutorialTab() {
+  const [lang, setLang] = useState('BM');
+  const [mod, setMod] = useState('start');
+  const [step, setStep] = useState(0);
+  const [done, setDone] = useState({});
+
+  const steps = STEPS[mod];
+  const cur = steps[step];
+  const total = steps.length;
+  const modInfo = MODULES.find(m=>m.id===mod);
+
+  const goStep = (n)=>{
+    const s = Math.max(0, Math.min(total-1, n));
+    setStep(s);
+    if(s===total-1) setDone(d=>({...d,[mod]:true}));
+  };
+
+  const switchMod = (id)=>{ setMod(id); setStep(0); };
+
+  return <div className="sc" style={{overflowY:'auto',padding:'16px',maxWidth:700,margin:'0 auto'}}>
+    {/* Header */}
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+      <div>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:'0.18em'}}>📺 PANDUAN INTERAKTIF</div>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:18,color:'white',marginTop:2}}>Cara Guna Aplikasi</div>
+      </div>
+      <div style={{display:'flex',gap:3,background:'rgba(255,255,255,0.04)',borderRadius:8,padding:3}}>
+        {['BM','EN'].map(l=><button key={l} onClick={()=>setLang(l)}
+          style={{padding:'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,letterSpacing:'0.1em',
+            background:lang===l?'rgba(255,61,189,0.18)':'transparent',color:lang===l?'#FF93D7':'rgba(255,255,255,0.4)'}}>{l}</button>)}
+      </div>
+    </div>
+
+    {/* Module selector */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:14}}>
+      {MODULES.map(m=><button key={m.id} onClick={()=>switchMod(m.id)}
+        style={{background:mod===m.id?`${m.col}22`:'rgba(255,255,255,0.03)',border:`1px solid ${mod===m.id?m.col+'55':'rgba(255,255,255,0.07)'}`,
+          borderRadius:10,padding:'8px 4px',cursor:'pointer',position:'relative'}}>
+        <div style={{fontSize:16,marginBottom:2}}>{m.icon}</div>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,color:mod===m.id?m.col:'rgba(255,255,255,0.5)',letterSpacing:'0.05em'}}>{m.label[lang]}</div>
+        <div style={{fontFamily:'Barlow',fontSize:8,color:'rgba(255,255,255,0.3)',marginTop:1}}>{STEPS[m.id].length} steps</div>
+        {done[m.id]&&<div style={{position:'absolute',top:4,right:5,fontSize:8,color:'#34D399'}}>✓</div>}
+      </button>)}
+    </div>
+
+    {/* Step card */}
+    <div style={{background:`linear-gradient(135deg, ${modInfo.col}08, rgba(155,43,251,0.05))`,
+      border:`1px solid ${modInfo.col}30`,borderRadius:14,overflow:'hidden'}}>
+      
+      {/* Visual */}
+      <div style={{background:'rgba(0,0,0,0.25)',padding:'16px'}}>
+        <TutorialVisual type={cur.vis}/>
+      </div>
+
+      {/* Content */}
+      <div style={{padding:'16px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+          <span style={{background:`${modInfo.col}30`,color:modInfo.col,padding:'3px 8px',borderRadius:5,fontFamily:'Barlow Condensed',fontWeight:800,fontSize:9,letterSpacing:'0.12em'}}>{cur.badge}</span>
+          <span style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.4)'}}>Step {step+1} / {total}</span>
+        </div>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:16,color:'white',marginBottom:8,lineHeight:1.2}}>{cur.title[lang]}</div>
+        <div style={{fontFamily:'Barlow',fontSize:13,color:'rgba(255,255,255,0.7)',lineHeight:1.6,marginBottom:cur.formula||cur.cards||cur.tip?12:0}}>{cur.desc[lang]}</div>
+
+        {cur.formula&&<div style={{background:'rgba(0,0,0,0.3)',border:`1px solid ${modInfo.col}40`,borderRadius:8,padding:'10px 12px',fontFamily:'ui-monospace,monospace',fontSize:12,color:modInfo.col,marginBottom:8}}>{cur.formula}</div>}
+        {cur.example&&<div style={{background:'rgba(52,211,153,0.06)',border:'0.5px solid rgba(52,211,153,0.2)',borderRadius:8,padding:'8px 12px',fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.7)',marginBottom:8}}>💡 {cur.example[lang]}</div>}
+
+        {cur.cards&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:6,marginBottom:8}}>
+          {cur.cards[lang].map(([ico,lbl,desc],i)=><div key={i} style={{background:'rgba(255,255,255,0.04)',border:'0.5px solid rgba(255,255,255,0.08)',borderRadius:8,padding:'8px 10px'}}>
+            <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:12,color:'white',marginBottom:2}}>{ico} {lbl}</div>
+            <div style={{fontFamily:'Barlow',fontSize:10,color:'rgba(255,255,255,0.5)',lineHeight:1.4}}>{desc}</div>
+          </div>)}
+        </div>}
+
+        {cur.tip&&<div style={{background:'rgba(52,211,153,0.06)',border:'0.5px solid rgba(52,211,153,0.2)',borderRadius:8,padding:'10px 12px',display:'flex',gap:8,marginBottom:12}}>
+          <span style={{fontSize:14,color:'#34D399'}}>💡</span>
+          <div style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.5,flex:1}}>{cur.tip[lang]}</div>
+        </div>}
+
+        {/* Progress dots */}
+        <div style={{display:'flex',gap:4,justifyContent:'center',marginBottom:12}}>
+          {steps.map((_,i)=><div key={i} onClick={()=>goStep(i)} style={{cursor:'pointer',
+            width:i===step?20:6,height:6,borderRadius:3,transition:'all 0.2s',
+            background:i===step?modInfo.col:i<step?`${modInfo.col}60`:'rgba(255,255,255,0.1)'}}/>)}
+        </div>
+
+        {/* Nav buttons */}
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>goStep(step-1)} disabled={step===0}
+            style={{flex:1,padding:'10px',borderRadius:9,border:'0.5px solid rgba(255,255,255,0.1)',cursor:step===0?'not-allowed':'pointer',
+              background:'rgba(255,255,255,0.04)',fontFamily:'Barlow Condensed',fontWeight:700,fontSize:11,color:'rgba(255,255,255,0.6)',letterSpacing:'0.08em',opacity:step===0?0.4:1}}>
+            ◀ {lang==='BM'?'SEBELUM':'PREV'}
+          </button>
+          {step<total-1
+            ? <button onClick={()=>goStep(step+1)} style={{flex:2,padding:'10px',borderRadius:9,border:'none',cursor:'pointer',
+                background:`linear-gradient(90deg,${modInfo.col},#9B2BFB)`,fontFamily:'Barlow Condensed',fontWeight:900,
+                fontSize:11,color:'white',letterSpacing:'0.08em',boxShadow:`0 2px 10px ${modInfo.col}40`}}>
+                {lang==='BM'?'SETERUSNYA':'NEXT'} ▶
+              </button>
+            : <button onClick={()=>{setDone(d=>({...d,[mod]:true})); const next=MODULES.findIndex(m=>m.id===mod)+1; if(next<MODULES.length)switchMod(MODULES[next].id);}}
+                style={{flex:2,padding:'10px',borderRadius:9,border:'none',cursor:'pointer',
+                  background:'linear-gradient(90deg,#34D399,#059669)',fontFamily:'Barlow Condensed',fontWeight:900,
+                  fontSize:11,color:'white',letterSpacing:'0.08em',boxShadow:'0 2px 10px rgba(52,211,153,0.4)'}}>
+                {lang==='BM'?'✓ MODUL SELESAI':'✓ MODULE DONE'}
+              </button>}
+        </div>
+      </div>
+    </div>
+
+    {/* Progress summary */}
+    <div style={{marginTop:12,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:'rgba(255,255,255,0.02)',border:'0.5px solid rgba(255,255,255,0.06)',borderRadius:10}}>
+      <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.5)'}}>
+        {Object.keys(done).length}/{MODULES.length} {lang==='BM'?'modul selesai':'modules done'}
+      </div>
+      <div style={{display:'flex',gap:6}}>
+        {MODULES.map(m=><div key={m.id} style={{width:8,height:8,borderRadius:'50%',background:done[m.id]?m.col:'rgba(255,255,255,0.1)'}}/>)}
+      </div>
+    </div>
+  </div>;
+}
+
 function PricingTab({onSelectPlan, user, subscription, onLogout}) {
   const [lang, setLang] = useState('BM');
   const [period, setPeriod] = useState('p12'); // 'p1' | 'p6' | 'p12'
@@ -1795,7 +2115,7 @@ function MainApp({ user, subscription, onLogout }) {
 
     {/* TABS */}
     <div style={{background:'#0E1528',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',overflowX:'auto'}}>
-      {[['overview','OVERVIEW'],['attack','ATTACK CHART'],['stats','STATISTICS'],['players','PLAYERS'],['history','HISTORY'],['db','TEAM SETUP'],['pricing','💎 PRICING']]
+      {[['tutorial','📺'],['overview','OVERVIEW'],['attack','ATTACK CHART'],['stats','STATISTICS'],['players','PLAYERS'],['history','HISTORY'],['db','TEAM SETUP'],['pricing','💎 PRICING']]
         .map(([id,lbl])=><button key={id} className={`tab ${tab===id?'on':''}`} onClick={()=>setTab(id)}>{lbl}</button>)}
     </div>
 
@@ -1901,6 +2221,7 @@ function MainApp({ user, subscription, onLogout }) {
     {tab==='stats'&&<StatisticsTab events={displayEvents} teamA={teamA} teamB={teamB} mobile={mobile}/>}
     {tab==='players'&&<PlayersTab events={displayEvents} teamA={teamA} teamB={teamB} mobile={mobile}/>}
     {tab==='history'&&<HistoryTab events={events} teamA={teamA} teamB={teamB} matchHistory={matchHistory} dispatch={dispatch} onViewMatch={enterViewMode}/>}
+    {tab==='tutorial'&&<TutorialTab/>}
     {tab==='db'&&<DatabaseTab teamDB={teamDB} setTeamDB={setTeamDB} matchTeams={matchTeams} setMatchTeams={setMatchTeams}/>}
     {tab==='pricing'&&<PricingTab user={user} subscription={subscription} onLogout={onLogout} onSelectPlan={(p)=>{
       const periodLabel = p.period==='p1'?'1 bulan':p.period==='p6'?'6 bulan':'1 tahun';
