@@ -1,4 +1,5 @@
 import React, { useReducer, useState, useMemo, useEffect, useRef } from 'react';
+import { supabase, isSubscriptionActive, daysRemaining, saveMatchToCloud, loadMatchHistory } from './supabase';
 
 // ═══════════════════════════════════════════════════════════════
 //  HANDBALL ANALYSIS SYSTEM v6 — Professional Edition
@@ -130,22 +131,14 @@ const TO_TYPES = [
 const mkId = () => Math.random().toString(36).slice(2,7);
 
 const DEFAULT_DB = [
-  { id:'kdh', name:'KEDAH',       color:'#CC0001', players:[] },
-  { id:'png', name:'PENANG',      color:'#0057A8', players:[] },
-  { id:'prk', name:'PERAK',       color:'#F5D000', players:[] },
-  { id:'jhr', name:'JOHOR',       color:'#E32726', players:[] },
-  { id:'kl',  name:'KL',          color:'#1A1A2E', players:[] },
-  { id:'ned', name:'Netherlands', color:'#E86500', players:[
-    {id:'a1',no:1,name:'Ten Holte (GK)'},{id:'a2',no:7,name:'Dulfer'},
-    {id:'a3',no:9,name:'Nüsser'},{id:'a4',no:19,name:'Freriks'},
-    {id:'a5',no:26,name:'Malestein'},{id:'a6',no:48,name:'Housheer'},
-    {id:'a7',no:79,name:'Polman'},
-  ]},
-  { id:'nor', name:'Norway',      color:'#C0392B', players:[
-    {id:'b1',no:9,name:'Mørk'},{id:'b2',no:15,name:'Ingstad'},
-    {id:'b3',no:16,name:'Lunde (GK)'},{id:'b4',no:25,name:'Reistad'},
-    {id:'b5',no:26,name:'Hovden'},{id:'b6',no:33,name:'Deila'},
-  ]},
+  { id:'kdh', name:'KEDAH',     color:'#CC0001', players:[] },
+  { id:'png', name:'PENANG',    color:'#0057A8', players:[] },
+  { id:'prk', name:'PERAK',     color:'#F5D000', players:[] },
+  { id:'jhr', name:'JOHOR',     color:'#E32726', players:[] },
+  { id:'sgr', name:'SELANGOR',  color:'#FFCC00', players:[] },
+  { id:'kl',  name:'KL',        color:'#1A1A2E', players:[] },
+  { id:'trg', name:'TERENGGANU', color:'#138808', players:[] },
+  { id:'pkn', name:'PAHANG',    color:'#000000', players:[] },
 ];
 
 // ═══ REDUCER ══════════════════════════════════════════════════
@@ -592,8 +585,314 @@ function SidebarSummary({stats}) {
   </div>;
 }
 
+// ═══ MATCH REPORT (Printable) ═════════════════════════════════
+function MatchReport({events, teamA, teamB, scoreA, scoreB, clock, onClose}) {
+  const Na  = useGlobalStats(events,'A','B');
+  const Nb  = useGlobalStats(events,'B','A');
+  const Na1 = useGlobalStats(events,'A','B','ALL',1);
+  const Nb1 = useGlobalStats(events,'B','A','ALL',1);
+  const Na2 = useGlobalStats(events,'A','B','ALL',2);
+  const Nb2 = useGlobalStats(events,'B','A','ALL',2);
+  const psA = usePlayerStats(events,'A',teamA.players);
+  const psB = usePlayerStats(events,'B',teamB.players);
+  const sA  = useTopScorers(events,'A',teamA.players);
+  const sB  = useTopScorers(events,'B',teamB.players);
+  const date = new Date().toLocaleDateString('en-MY',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  const PRINT_CSS = `
+    @media print {
+      html, body { background: white !important; margin: 0 !important; padding: 0 !important; height: auto !important; }
+      body * { visibility: hidden !important; }
+      #report-overlay, #report-overlay * { visibility: visible !important; }
+      #report-overlay {
+        position: static !important;
+        background: white !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        height: auto !important;
+        inset: auto !important;
+      }
+      #match-report {
+        position: static !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+      .report-section {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      table { page-break-inside: avoid !important; }
+      .no-print { display: none !important; }
+      @page { margin: 1.2cm; size: A4; }
+    }
+  `;
+
+  // Stat bar comparison
+  const Bar = ({label, a, b, fmt=x=>x, higherBetter=true})=>{
+    const total = (parseFloat(a)||0) + (parseFloat(b)||0);
+    const pctA = total ? Math.round((parseFloat(a)||0)/total*100) : 50;
+    const pctB = 100 - pctA;
+    const aWins = higherBetter ? parseFloat(a)>=parseFloat(b) : parseFloat(a)<=parseFloat(b);
+    return (
+      <div style={{marginBottom:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:4}}>
+          <span style={{fontWeight:700,fontSize:15,color:aWins?teamA.color:'#333'}}>{fmt(a)}</span>
+          <span style={{fontSize:10,color:'#888',letterSpacing:'0.1em',fontWeight:600}}>{label}</span>
+          <span style={{fontWeight:700,fontSize:15,color:!aWins?teamB.color:'#333'}}>{fmt(b)}</span>
+        </div>
+        <div style={{display:'flex',borderRadius:4,overflow:'hidden',height:8}}>
+          <div style={{width:pctA+'%',background:teamA.color,opacity:0.85}}/>
+          <div style={{width:pctB+'%',background:teamB.color,opacity:0.85}}/>
+        </div>
+      </div>
+    );
+  };
+
+  // Player row for table
+  const PRow = ({r,team})=> r.G+r.A+r.Sh+r.TO+r.BL+r.ST+r.F===0 ? null : (
+    <tr>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',color:team.color,fontWeight:700}}>#{r.p.no}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',fontWeight:600}}>{r.p.name}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',fontWeight:700,color:r.G>0?'#059669':'#999'}}>{r.G}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:r.A>0?'#2563EB':'#999'}}>{r.A}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:'#555'}}>{r.G}/{r.Sh}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:r.TO>0?'#D97706':'#999'}}>{r.TO}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:r.BL>0?'#2563EB':'#999'}}>{r.BL}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:r.ST>0?'#059669':'#999'}}>{r.ST}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:r.twoMin>0?'#DC2626':'#999'}}>{r.twoMin||0}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:r.Y>0?'#CA8A04':'#999'}}>{r.Y}</td>
+      <td style={{padding:'5px 8px',borderBottom:'1px solid #eee',textAlign:'center',color:r.R>0?'#991B1B':'#999'}}>{r.R}</td>
+    </tr>
+  );
+
+  const Section = ({title,children,color='#1e3a5f'})=>(
+    <div className="report-section" style={{marginBottom:20,pageBreakInside:'avoid'}}>
+      <div style={{background:color,color:'white',padding:'6px 14px',borderRadius:'6px 6px 0 0',
+        fontSize:11,fontWeight:800,letterSpacing:'0.15em'}}>{title}</div>
+      <div style={{border:'1px solid #ddd',borderTop:'none',borderRadius:'0 0 6px 6px',padding:'14px'}}>{children}</div>
+    </div>
+  );
+
+  return (
+    <div id="report-overlay" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:950,overflowY:'auto',padding:'20px'}}>
+      <style>{PRINT_CSS}</style>
+      <div id="match-report" style={{background:'white',maxWidth:800,margin:'0 auto',borderRadius:12,
+        fontFamily:'Arial,sans-serif',color:'#1a1a1a',fontSize:13,lineHeight:1.4}}>
+
+        {/* Action bar */}
+        <div className="no-print" style={{background:'#f8f9fa',borderRadius:'12px 12px 0 0',padding:'12px 20px',
+          display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid #ddd'}}>
+          <span style={{fontWeight:700,fontSize:14,color:'#555'}}>📄 Match Report — Preview</span>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>window.print()}
+              style={{background:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'8px 18px',
+                fontWeight:700,fontSize:13,cursor:'pointer'}}>🖨️ Print / Save PDF</button>
+            <button onClick={onClose}
+              style={{background:'#eee',border:'none',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer'}}>✕ Close</button>
+          </div>
+        </div>
+
+        {/* Report Content */}
+        <div style={{padding:'24px 28px'}}>
+
+          {/* Header */}
+          <div style={{textAlign:'center',borderBottom:'3px solid #1e3a5f',paddingBottom:16,marginBottom:20}}>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.2em',color:'#888',marginBottom:6}}>HANDBALL MATCH REPORT</div>
+            <div style={{fontSize:11,color:'#888',marginBottom:12}}>{date} · {halfLabel(clock.half)} · {fmtClock(clock.seconds)}</div>
+            {/* Score hero */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:16,marginBottom:10}}>
+              <div style={{textAlign:'right'}}>
+                <div style={{width:48,height:48,borderRadius:'50%',background:teamA.color,display:'inline-flex',
+                  alignItems:'center',justifyContent:'center',color:'white',fontWeight:900,fontSize:18,marginBottom:6}}>
+                  {teamA.name.slice(0,2).toUpperCase()}
+                </div>
+                <div style={{fontSize:18,fontWeight:900,color:teamA.color}}>{teamA.name.toUpperCase()}</div>
+              </div>
+              <div style={{textAlign:'center',padding:'10px 24px',background:'#f0f4f8',borderRadius:12}}>
+                <div style={{fontSize:48,fontWeight:900,letterSpacing:6,color:'#1e3a5f',lineHeight:1}}>
+                  {scoreA}<span style={{color:'#ccc',margin:'0 8px'}}>–</span>{scoreB}
+                </div>
+                <div style={{fontSize:11,color:'#888',marginTop:4,fontWeight:600}}>FINAL SCORE</div>
+              </div>
+              <div style={{textAlign:'left'}}>
+                <div style={{width:48,height:48,borderRadius:'50%',background:teamB.color,display:'inline-flex',
+                  alignItems:'center',justifyContent:'center',color:'white',fontWeight:900,fontSize:18,marginBottom:6}}>
+                  {teamB.name.slice(0,2).toUpperCase()}
+                </div>
+                <div style={{fontSize:18,fontWeight:900,color:teamB.color}}>{teamB.name.toUpperCase()}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Key Stats Comparison */}
+          <Section title="PERBANDINGAN UTAMA">
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}>
+              <div style={{fontWeight:700,fontSize:12,color:teamA.color,textAlign:'center',padding:'4px',background:teamA.color+'15',borderRadius:6}}>{teamA.name.toUpperCase()}</div>
+              <div style={{fontWeight:700,fontSize:12,color:teamB.color,textAlign:'center',padding:'4px',background:teamB.color+'15',borderRadius:6}}>{teamB.name.toUpperCase()}</div>
+            </div>
+            <Bar label="SHOOTING %" a={parseInt(Na.pctShoot)||0} b={parseInt(Nb.pctShoot)||0} fmt={x=>x+'%'}/>
+            <Bar label="GOALS / SHOTS" a={Na.goals} b={Nb.goals} fmt={x=>x}/>
+            <Bar label="GK SAVES" a={Na.saves.g} b={Nb.saves.g} fmt={x=>x}/>
+            <Bar label="TURNOVERS" a={Na.to} b={Nb.to} fmt={x=>x} higherBetter={false}/>
+            <Bar label="BLOCKS" a={Na.blocks} b={Nb.blocks} fmt={x=>x}/>
+            <Bar label="STEALS" a={Na.steals} b={Nb.steals} fmt={x=>x}/>
+          </Section>
+
+          {/* Attack Breakdown */}
+          <Section title="ANALISIS SERANGAN">
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{background:'#f0f4f8'}}>
+                  <th style={{padding:'7px 10px',textAlign:'left',fontWeight:700,fontSize:10,letterSpacing:'0.1em',color:'#555'}}>JENIS SERANGAN</th>
+                  <th style={{padding:'7px 10px',textAlign:'center',color:teamA.color,fontWeight:700}}>{teamA.name} (G/A)</th>
+                  <th style={{padding:'7px 10px',textAlign:'center',color:teamA.color,fontWeight:700}}>%</th>
+                  <th style={{padding:'7px 10px',textAlign:'center',color:teamB.color,fontWeight:700}}>{teamB.name} (G/A)</th>
+                  <th style={{padding:'7px 10px',textAlign:'center',color:teamB.color,fontWeight:700}}>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['Fastbreak (1st Wave)', Na.fast, Nb.fast],
+                  ['Counter (2nd Wave)', useGlobalStats, useGlobalStats],
+                  ['7-Meter Throw', Na.sevenM, Nb.sevenM],
+                  ['Pivot / Breakthrough', Na.breakthrough, Nb.breakthrough],
+                  ['Long Distance', Na.long, Nb.long],
+                  ['Wing Shots', Na.clear, Nb.clear],
+                ].map(([lbl,a,b],i)=>{
+                  if(typeof a==='function') return null;
+                  const pa=a.a?Math.round(a.g/a.a*100):0, pb=b.a?Math.round(b.g/b.a*100):0;
+                  return <tr key={lbl} style={{background:i%2?'#fafafa':'white'}}>
+                    <td style={{padding:'6px 10px',borderBottom:'1px solid #eee',fontWeight:600}}>{lbl}</td>
+                    <td style={{padding:'6px 10px',borderBottom:'1px solid #eee',textAlign:'center',fontWeight:700,color:teamA.color}}>{a.g}/{a.a}</td>
+                    <td style={{padding:'6px 10px',borderBottom:'1px solid #eee',textAlign:'center',
+                      color:pa>=50?'#059669':'#DC2626',fontWeight:600}}>{pa}%</td>
+                    <td style={{padding:'6px 10px',borderBottom:'1px solid #eee',textAlign:'center',fontWeight:700,color:teamB.color}}>{b.g}/{b.a}</td>
+                    <td style={{padding:'6px 10px',borderBottom:'1px solid #eee',textAlign:'center',
+                      color:pb>=50?'#059669':'#DC2626',fontWeight:600}}>{pb}%</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </Section>
+
+          {/* Half Time Comparison */}
+          <Section title="PERBANDINGAN SEPARUH MASA">
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{background:'#f0f4f8'}}>
+                  <th style={{padding:'7px 10px',textAlign:'left',fontWeight:700,fontSize:10,color:'#555'}}>STATISTIK</th>
+                  <th colSpan={2} style={{padding:'7px',textAlign:'center',fontWeight:700,fontSize:10,color:'#555',borderRight:'2px solid #ddd'}}>1ST HALF</th>
+                  <th colSpan={2} style={{padding:'7px',textAlign:'center',fontWeight:700,fontSize:10,color:'#555'}}>2ND HALF</th>
+                </tr>
+                <tr style={{background:'#f8f8f8'}}>
+                  <th style={{padding:'5px 10px'}}/>
+                  <th style={{padding:'5px',textAlign:'center',color:teamA.color,fontWeight:700,fontSize:11}}>{teamA.name}</th>
+                  <th style={{padding:'5px',textAlign:'center',color:teamB.color,fontWeight:700,fontSize:11,borderRight:'2px solid #ddd'}}>{teamB.name}</th>
+                  <th style={{padding:'5px',textAlign:'center',color:teamA.color,fontWeight:700,fontSize:11}}>{teamA.name}</th>
+                  <th style={{padding:'5px',textAlign:'center',color:teamB.color,fontWeight:700,fontSize:11}}>{teamB.name}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['Goals', Na1.goals, Nb1.goals, Na2.goals, Nb2.goals],
+                  ['Shots', Na1.total, Nb1.total, Na2.total, Nb2.total],
+                  ['Shooting %', Na1.pctShoot, Nb1.pctShoot, Na2.pctShoot, Nb2.pctShoot],
+                  ['Turnovers', Na1.to, Nb1.to, Na2.to, Nb2.to],
+                  ['Fouls', Na1.fouls, Nb1.fouls, Na2.fouls, Nb2.fouls],
+                ].map(([lbl,a1,b1,a2,b2],i)=>(
+                  <tr key={lbl} style={{background:i%2?'#fafafa':'white'}}>
+                    <td style={{padding:'6px 10px',borderBottom:'1px solid #eee',fontWeight:600}}>{lbl}</td>
+                    <td style={{padding:'6px',textAlign:'center',borderBottom:'1px solid #eee',fontWeight:700,color:teamA.color}}>{a1}</td>
+                    <td style={{padding:'6px',textAlign:'center',borderBottom:'1px solid #eee',fontWeight:700,color:teamB.color,borderRight:'2px solid #ddd'}}>{b1}</td>
+                    <td style={{padding:'6px',textAlign:'center',borderBottom:'1px solid #eee',fontWeight:700,color:teamA.color}}>{a2}</td>
+                    <td style={{padding:'6px',textAlign:'center',borderBottom:'1px solid #eee',fontWeight:700,color:teamB.color}}>{b2}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Section>
+
+          {/* Discipline */}
+          {(Na.twoMin+Na.yellow+Na.red+Nb.twoMin+Nb.yellow+Nb.red)>0&&
+          <Section title="DISIPLIN & KAD">
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+              {[{team:teamA,st:Na},{team:teamB,st:Nb}].map(({team,st})=>(
+                <div key={team.id}>
+                  <div style={{fontWeight:700,color:team.color,marginBottom:8}}>{team.name.toUpperCase()}</div>
+                  <div style={{display:'flex',gap:10}}>
+                    {[['2-Min',st.twoMin,'#DC2626'],['Yellow',st.yellow,'#CA8A04'],['Red',st.red,'#991B1B'],['Foul',st.fouls,'#6B7280']].map(([lbl,val,col])=>(
+                      <div key={lbl} style={{textAlign:'center',padding:'8px 12px',background:'#f8f8f8',borderRadius:8,border:'1px solid #eee'}}>
+                        <div style={{fontSize:20,fontWeight:900,color:col}}>{val}</div>
+                        <div style={{fontSize:9,color:'#888',fontWeight:700,letterSpacing:'0.1em'}}>{lbl.toUpperCase()}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>}
+
+          {/* Player Stats */}
+          {[{team:teamA,ps:psA},{team:teamB,ps:psB}].map(({team,ps})=>(
+            ps.filter(r=>r.G+r.A+r.Sh+r.TO+r.BL+r.ST+r.F>0).length > 0 &&
+            <Section key={team.id} title={`STATISTIK PEMAIN — ${team.name.toUpperCase()}`} color={team.color}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                <thead>
+                  <tr style={{background:team.color+'15'}}>
+                    {['#','NAMA','G','A','G/SH','TO','BL','ST','2′','YC','RC'].map(h=>(
+                      <th key={h} style={{padding:'6px 8px',textAlign:h==='NAMA'?'left':'center',fontWeight:700,fontSize:9,letterSpacing:'0.1em',color:'#555',borderBottom:'2px solid '+team.color}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ps.map((r,i)=><PRow key={r.p.id} r={r} team={team}/>)}
+                </tbody>
+              </table>
+            </Section>
+          ))}
+
+          {/* Top Scorers */}
+          {(sA.length>0||sB.length>0)&&
+          <Section title="PENJARING TERBANYAK">
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+              {[{sc:sA,team:teamA},{sc:sB,team:teamB}].map(({sc,team})=>(
+                <div key={team.id}>
+                  <div style={{fontWeight:700,color:team.color,marginBottom:8,fontSize:12}}>{team.name.toUpperCase()}</div>
+                  {sc.length===0
+                    ?<div style={{fontSize:11,color:'#aaa'}}>No goals recorded</div>
+                    :sc.map((s,i)=>(
+                      <div key={s.p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid #f0f0f0'}}>
+                        <div style={{width:22,height:22,borderRadius:'50%',background:team.color,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:900,fontSize:10}}>
+                          {i+1}
+                        </div>
+                        <span style={{color:team.color,fontWeight:700}}>#{s.p.no}</span>
+                        <span style={{flex:1,fontWeight:600}}>{s.p.name}</span>
+                        <span style={{fontWeight:900,fontSize:16,color:'#1e3a5f'}}>{s.n} gol</span>
+                      </div>
+                    ))
+                  }
+                </div>
+              ))}
+            </div>
+          </Section>}
+
+          {/* Footer */}
+          <div style={{textAlign:'center',paddingTop:14,borderTop:'2px solid #eee',color:'#aaa',fontSize:10,letterSpacing:'0.1em'}}>
+            HANDBALL ANALYSIS SYSTEM · GENERATED {new Date().toLocaleString('en-MY')}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══ OVERVIEW TAB ═════════════════════════════════════════════
-function OverviewTab({events, teamA, teamB, clock, scoreA, scoreB}) {
+function OverviewTab({events, teamA, teamB, clock, scoreA, scoreB, onPrintReport}) {
   const Na = useGlobalStats(events,'A','B');
   const Nb = useGlobalStats(events,'B','A');
   const sA = useTopScorers(events,'A',teamA.players);
@@ -613,6 +912,15 @@ function OverviewTab({events, teamA, teamB, clock, scoreA, scoreB}) {
     </div>;
 
   return<div className="sc" style={{overflowY:'auto',padding:'14px',maxWidth:720,margin:'0 auto'}}>
+    {/* Print Report Button */}
+    <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+      <button className="btn" onClick={onPrintReport}
+        style={{background:'#1e3a5f',border:'none',borderRadius:10,padding:'9px 18px',
+          display:'flex',alignItems:'center',gap:7,boxShadow:'0 2px 12px rgba(0,0,0,0.3)'}}>
+        <span style={{fontSize:16}}>🖨️</span>
+        <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:13,color:'white',letterSpacing:'0.1em'}}>PRINT MATCH REPORT</span>
+      </button>
+    </div>
     {/* Score + clock hero */}
     <div style={{background:'rgba(255,255,255,0.03)',borderRadius:14,padding:'18px',
       border:'1px solid rgba(255,255,255,0.07)',marginBottom:14,textAlign:'center'}}>
@@ -754,7 +1062,7 @@ function StatisticsTab({events,teamA,teamB,mobile}) {
     </div>
 
     {card('SHOOTING & ATTACK',<>
-      {row('Shooting Efficiency',f(Na),f(Nb))}
+      {row('Shooting Efficiency',`${Na.goals}/${Na.total} (${Na.pctShoot})`,`${Nb.goals}/${Nb.total} (${Nb.pctShoot})`)}
       {row('Attack Efficiency',f(Na.attackEff),f(Nb.attackEff))}
       {row('7-Meter',`${Na.sevenM.g}/${Na.sevenM.a}`,`${Nb.sevenM.g}/${Nb.sevenM.a}`)}
       {row('Long Distance',`${Na.long.g}/${Na.long.a}`,`${Nb.long.g}/${Nb.long.a}`)}
@@ -862,8 +1170,281 @@ function PlayersTab({events, teamA, teamB, mobile}) {
   </div>;
 }
 
+// ═══ PRICING TAB ══════════════════════════════════════════════
+const PRICING_DATA = {
+  individual: { name:{BM:'Solo',EN:'Solo'}, sub:{BM:'Coach solo',EN:'Solo coach'},
+    p1:10, p6:30, p12:45, devices:1, color:'#3B82F6', popular:false },
+  team: { name:{BM:'Team',EN:'Team'}, sub:{BM:'Coaching staff pasukan',EN:'Coaching staff'},
+    p1:15, p6:50, p12:65, devices:3, color:'#FF3DBD', popular:true },
+  club: { name:{BM:'Club',EN:'Club'}, sub:{BM:'Kelab / persatuan',EN:'Club / association'},
+    p1:25, p6:90, p12:120, devices:6, color:'#F59E0B', popular:false },
+};
+
+const PRICING_FEATURES = {
+  BM: [
+    { key:'devices',     label:'Peranti aktif serentak',     ind:'1 peranti', team:'3 peranti', club:'6 peranti' },
+    { key:'analysis',    label:'Semua features analisis',    ind:true, team:true, club:true },
+    { key:'report',      label:'Print match report',         ind:true, team:true, club:true },
+    { key:'cloud',       label:'Cloud backup',               ind:'5 match terkini', team:'Tanpa had', club:'Tanpa had' },
+    { key:'sync',        label:'Multi-device sync',          ind:false, team:true, club:true },
+    { key:'export',      label:'Export CSV / PDF',           ind:'PDF sahaja', team:true, club:true },
+    { key:'multiteam',   label:'Multiple teams',             ind:false, team:false, club:true },
+    { key:'analytics',   label:'Cross-team analytics',       ind:false, team:false, club:true },
+    { key:'branding',    label:'Custom branding kelab',      ind:false, team:false, club:true },
+    { key:'support',     label:'Priority support',           ind:false, team:false, club:true },
+  ],
+  EN: [
+    { key:'devices',     label:'Active devices',             ind:'1 device', team:'3 devices', club:'6 devices' },
+    { key:'analysis',    label:'All analysis features',      ind:true, team:true, club:true },
+    { key:'report',      label:'Print match report',         ind:true, team:true, club:true },
+    { key:'cloud',       label:'Cloud backup',               ind:'Last 5 matches', team:'Unlimited', club:'Unlimited' },
+    { key:'sync',        label:'Multi-device sync',          ind:false, team:true, club:true },
+    { key:'export',      label:'Export CSV / PDF',           ind:'PDF only', team:true, club:true },
+    { key:'multiteam',   label:'Multiple teams',             ind:false, team:false, club:true },
+    { key:'analytics',   label:'Cross-team analytics',       ind:false, team:false, club:true },
+    { key:'branding',    label:'Custom club branding',       ind:false, team:false, club:true },
+    { key:'support',     label:'Priority support',           ind:false, team:false, club:true },
+  ],
+};
+
+const PRICING_TXT = {
+  BM: {
+    title:'Pilih Plan Anda', sub:'30 hari percubaan percuma · Tanpa kad kredit · Batalkan bila-bila masa',
+    monthly1:'1 Bulan', monthly6:'6 Bulan', yearly:'1 Tahun', saveBadge:'Jimat sehingga 62%',
+    perBulan:'/bulan', selectPlan:'Pilih Plan Ini', startTrial:'Mulakan Trial 30 Hari', mostPopular:'Paling Popular',
+    features:'Apa Yang Anda Dapat', compare:'Perbandingan Penuh',
+    saveVsMonthly:'Jimat',
+    faqTitle:'Soalan Lazim',
+    faq:[
+      {q:'Apa berlaku selepas 30 hari percuma?', a:'Selepas trial, anda perlu bayar untuk teruskan guna. Kalau tak bayar, akaun akan deactivate tapi data anda kekal disimpan 90 hari.'},
+      {q:'Kenapa 1 tahun lebih jimat?', a:'Bayar 1 tahun lebih murah ~62% berbanding bayar bulanan. Sesuai untuk yang dah biasa guna dan nak save more.'},
+      {q:'Boleh tukar antara plan?', a:'Boleh. Anda boleh upgrade bila-bila masa. Bayaran prorated mengikut baki tempoh.'},
+      {q:'Macam mana cara bayar?', a:'FPX (online banking semua bank Malaysia), kad kredit, atau bank transfer. Bayaran proses dalam masa 1 hari.'},
+      {q:'Boleh cancel subscription?', a:'Ya, bila-bila masa. Anda akan terus guna sampai tempoh berakhir. Tiada caj tambahan.'},
+    ],
+    contact:'Soalan lain? Hubungi kami:'
+  },
+  EN: {
+    title:'Choose Your Plan', sub:'30-day free trial · No credit card required · Cancel anytime',
+    monthly1:'1 Month', monthly6:'6 Months', yearly:'1 Year', saveBadge:'Save up to 62%',
+    perBulan:'/month', selectPlan:'Select This Plan', startTrial:'Start 30-Day Trial', mostPopular:'Most Popular',
+    features:'What You Get', compare:'Full Comparison',
+    saveVsMonthly:'Save',
+    faqTitle:'FAQ',
+    faq:[
+      {q:'What happens after the 30-day trial?', a:'After trial, you need to pay to continue. If unpaid, account deactivates but your data is kept for 90 days.'},
+      {q:'Why is 1 year a better deal?', a:'Paying yearly is ~62% cheaper than monthly. Best for users who plan to use long-term.'},
+      {q:'Can I switch between plans?', a:'Yes. You can upgrade anytime. Payment is prorated based on remaining period.'},
+      {q:'How do I pay?', a:'FPX (Malaysian online banking), credit card, or bank transfer. Payment processed within 1 day.'},
+      {q:'Can I cancel my subscription?', a:'Yes, anytime. You\'ll continue using until the period ends. No cancellation fees.'},
+    ],
+    contact:'Other questions? Contact us:'
+  }
+};
+
+function PricingTab({onSelectPlan, user, subscription, onLogout}) {
+  const [lang, setLang] = useState('BM');
+  const [period, setPeriod] = useState('p12'); // 'p1' | 'p6' | 'p12'
+  const [expandFaq, setExpandFaq] = useState(null);
+  const t = PRICING_TXT[lang];
+
+  const planCard = (key, plan)=>{
+    const price = plan[period];
+    const months = period==='p1'?1:period==='p6'?6:12;
+    const perMonth = (price/months).toFixed(2);
+    // Saving vs monthly rate × months
+    const fullPrice = plan.p1 * months;
+    const saving = fullPrice - price;
+    const savePct = months>1 ? Math.round((saving/fullPrice)*100) : 0;
+    return (
+      <div key={key} style={{background:'rgba(255,255,255,0.03)',
+        border:plan.popular?`2px solid ${plan.color}`:'1px solid rgba(255,255,255,0.07)',
+        borderRadius:14,padding:'20px 18px',position:'relative',display:'flex',flexDirection:'column',gap:14}}>
+        {plan.popular&&<div style={{position:'absolute',top:-11,left:'50%',transform:'translateX(-50%)',
+          background:plan.color,padding:'3px 14px',borderRadius:6,fontFamily:'Barlow Condensed',
+          fontWeight:900,fontSize:10,color:'white',letterSpacing:'0.15em',whiteSpace:'nowrap'}}>{t.mostPopular.toUpperCase()}</div>}
+
+        <div>
+          <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:22,color:'white'}}>{plan.name[lang]}</div>
+          <div style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.45)',marginTop:2}}>{plan.sub[lang]}</div>
+        </div>
+
+        <div>
+          <div style={{display:'flex',alignItems:'baseline',gap:5}}>
+            <span style={{fontFamily:'Barlow',fontSize:14,color:'rgba(255,255,255,0.5)'}}>RM</span>
+            <span style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:40,color:'white',lineHeight:1}}>{price}</span>
+            <span style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.4)'}}>/{period==='p1'?'bln':period==='p6'?'6 bln':'tahun'}</span>
+          </div>
+          <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.35)',marginTop:3}}>≈ RM {perMonth}{t.perBulan}</div>
+          {savePct>0&&<div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'#34D399',
+            background:'rgba(52,211,153,0.12)',border:'1px solid rgba(52,211,153,0.25)',
+            borderRadius:6,padding:'3px 8px',marginTop:6,display:'inline-block',letterSpacing:'0.05em'}}>
+            {t.saveVsMonthly} {savePct}% (RM {saving})
+          </div>}
+        </div>
+
+        <div style={{background:plan.color+'15',border:`1px solid ${plan.color}40`,borderRadius:8,padding:'7px 10px',display:'flex',alignItems:'center',gap:7}}>
+          <span style={{fontSize:14}}>📱</span>
+          <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:12,color:plan.color,letterSpacing:'0.05em'}}>
+            {plan.devices} {lang==='BM'?'peranti aktif serentak':'devices active'}
+          </span>
+        </div>
+
+        <div style={{display:'flex',flexDirection:'column',gap:7,flex:1}}>
+          {PRICING_FEATURES[lang].slice(0,6).map(f=>{
+            const v = f[key==='individual'?'ind':key];
+            const has = v===true || (typeof v==='string');
+            return <div key={f.key} style={{display:'flex',alignItems:'flex-start',gap:7}}>
+              <span style={{color:has?'#34D399':'rgba(255,255,255,0.2)',fontSize:14,lineHeight:1.2,flexShrink:0}}>{has?'✓':'✗'}</span>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'Barlow',fontSize:12,color:has?'rgba(255,255,255,0.7)':'rgba(255,255,255,0.3)',lineHeight:1.35}}>{f.label}</div>
+                {typeof v==='string'&&<div style={{fontFamily:'Barlow',fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:1}}>{v}</div>}
+              </div>
+            </div>;
+          })}
+        </div>
+
+        <button className="btn" onClick={()=>onSelectPlan&&onSelectPlan({plan:key, period, price})}
+          style={{background:plan.popular?plan.color:'rgba(255,255,255,0.07)',
+            border:plan.popular?'none':`1px solid ${plan.color}80`,
+            borderRadius:10,padding:'11px',fontFamily:'Barlow Condensed',fontWeight:900,
+            fontSize:13,color:'white',letterSpacing:'0.1em',marginTop:'auto',
+            boxShadow:plan.popular?`0 4px 16px ${plan.color}40`:'none'}}>
+          {t.startTrial.toUpperCase()}
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div className="sc" style={{overflowY:'auto',padding:'20px 16px',maxWidth:980,margin:'0 auto'}}>
+      {/* Account info card */}
+      {user&&<div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',
+        borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:38,height:38,borderRadius:'50%',background:'linear-gradient(135deg,#FF3DBD,#9B2BFB)',
+            display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Barlow Condensed',fontWeight:900,fontSize:16,color:'white'}}>
+            {(user.email||'?').charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:14,color:'white'}}>{user.email}</div>
+            <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:2}}>
+              {subscription?.status==='trial'
+                ? `Trial · ${daysRemaining(subscription)} hari lagi`
+                : subscription?.status==='active'
+                  ? `${subscription.plan} · sehingga ${new Date(subscription.paid_until).toLocaleDateString('en-MY')}`
+                  : 'Plan: trial'}
+            </div>
+          </div>
+        </div>
+        {onLogout&&<button onClick={onLogout}
+          style={{background:'rgba(220,38,38,0.1)',border:'1px solid rgba(220,38,38,0.2)',borderRadius:8,
+            padding:'7px 14px',fontFamily:'Barlow Condensed',fontWeight:700,fontSize:11,
+            color:'rgba(252,129,129,0.8)',letterSpacing:'0.1em',cursor:'pointer'}}>
+          LOG OUT
+        </button>}
+      </div>}
+
+      {/* Header with language toggle */}
+      <div style={{textAlign:'center',marginBottom:20,position:'relative'}}>
+        {/* Lang toggle (top right) */}
+        <div style={{position:'absolute',right:0,top:0,display:'flex',gap:4,background:'rgba(255,255,255,0.05)',padding:3,borderRadius:8}}>
+          {['BM','EN'].map(l=><button key={l} className="btn" onClick={()=>setLang(l)}
+            style={{background:lang===l?'rgba(255,255,255,0.15)':'transparent',
+              border:'none',borderRadius:6,padding:'4px 10px',
+              fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,
+              color:lang===l?'white':'rgba(255,255,255,0.4)'}}>{l}</button>)}
+        </div>
+
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:32,color:'white',letterSpacing:'0.02em'}}>{t.title}</div>
+        <div style={{fontFamily:'Barlow',fontSize:13,color:'rgba(255,255,255,0.5)',marginTop:6,maxWidth:500,margin:'6px auto 0'}}>{t.sub}</div>
+      </div>
+
+      {/* Billing period selector (3 options) */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,marginBottom:24,flexWrap:'wrap'}}>
+        <div style={{display:'flex',background:'rgba(255,255,255,0.04)',borderRadius:10,padding:3,border:'1px solid rgba(255,255,255,0.06)'}}>
+          {[['p1',t.monthly1],['p6',t.monthly6],['p12',t.yearly]].map(([id,lbl])=>{
+            const active = period===id;
+            return <button key={id} onClick={()=>setPeriod(id)}
+              style={{padding:'8px 16px',borderRadius:7,border:'none',cursor:'pointer',
+                background:active?'rgba(255,61,189,0.18)':'transparent',
+                fontFamily:'Barlow Condensed',fontWeight:800,fontSize:12,letterSpacing:'0.1em',
+                color:active?'#FF93D7':'rgba(255,255,255,0.5)',transition:'all 0.15s',whiteSpace:'nowrap'}}>
+              {lbl}
+              {id==='p12'&&<span style={{marginLeft:6,fontSize:9,background:'rgba(52,211,153,0.2)',color:'#34D399',padding:'1px 5px',borderRadius:4}}>BEST</span>}
+            </button>;
+          })}
+        </div>
+      </div>
+
+      {/* Plan cards */}
+      <div className="r2" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:14,marginBottom:30}}>
+        {planCard('individual', PRICING_DATA.individual)}
+        {planCard('team', PRICING_DATA.team)}
+        {planCard('club', PRICING_DATA.club)}
+      </div>
+
+      {/* Full comparison table */}
+      <div style={{marginTop:30,marginBottom:30}}>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:18,color:'white',marginBottom:14,textAlign:'center'}}>{t.compare}</div>
+        <div style={{background:'rgba(255,255,255,0.02)',borderRadius:12,padding:'4px',border:'1px solid rgba(255,255,255,0.06)',overflowX:'auto'}}>
+          <table className="tbl" style={{width:'100%'}}>
+            <thead><tr>
+              <th style={{textAlign:'left',paddingLeft:14,padding:'12px',minWidth:180}}>{lang==='BM'?'Feature':'Feature'}</th>
+              {Object.entries(PRICING_DATA).map(([k,p])=>
+                <th key={k} style={{padding:'12px',color:p.color,minWidth:90}}>{p.name[lang]}</th>
+              )}
+            </tr></thead>
+            <tbody>
+              {PRICING_FEATURES[lang].map((f,i)=>
+                <tr key={f.key} style={{background:i%2?'rgba(255,255,255,0.02)':'transparent'}}>
+                  <td style={{textAlign:'left',paddingLeft:14,padding:'10px 14px',fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.7)'}}>{f.label}</td>
+                  {[['ind',PRICING_DATA.individual.color],['team',PRICING_DATA.team.color],['club',PRICING_DATA.club.color]].map(([k,col])=>{
+                    const v = f[k];
+                    return <td key={k} style={{padding:'10px',textAlign:'center'}}>
+                      {v===true ? <span style={{color:'#34D399',fontSize:16,fontWeight:900}}>✓</span>
+                       : v===false ? <span style={{color:'rgba(255,255,255,0.2)',fontSize:14}}>—</span>
+                       : <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:11,color:col}}>{v}</span>}
+                    </td>;
+                  })}
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* FAQ */}
+      <div style={{marginBottom:30}}>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:18,color:'white',marginBottom:14,textAlign:'center'}}>{t.faqTitle}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {t.faq.map((f,i)=><div key={i} style={{background:'rgba(255,255,255,0.03)',borderRadius:10,border:'1px solid rgba(255,255,255,0.06)',overflow:'hidden'}}>
+            <div onClick={()=>setExpandFaq(expandFaq===i?null:i)} style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer'}}>
+              <span style={{fontFamily:'Barlow',fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.85)'}}>{f.q}</span>
+              <span style={{fontFamily:'Barlow Condensed',fontSize:18,color:'rgba(255,255,255,0.4)',marginLeft:10}}>{expandFaq===i?'−':'+'}</span>
+            </div>
+            {expandFaq===i&&<div style={{padding:'0 16px 14px',fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.55)',lineHeight:1.6,borderTop:'1px solid rgba(255,255,255,0.04)',paddingTop:10}}>{f.a}</div>}
+          </div>)}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{textAlign:'center',padding:'20px 0',borderTop:'1px solid rgba(255,255,255,0.06)'}}>
+        <div style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.4)',marginBottom:10}}>{t.contact}</div>
+        <div style={{display:'flex',justifyContent:'center',gap:14,flexWrap:'wrap'}}>
+          <a href="mailto:support@handballapp.my" style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'#FF93D7',textDecoration:'none',letterSpacing:'0.05em'}}>📧 support@handballapp.my</a>
+          <a href="https://wa.me/60123456789" style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'#34D399',textDecoration:'none',letterSpacing:'0.05em'}}>💬 WhatsApp</a>
+        </div>
+        <div style={{marginTop:14,display:'flex',justifyContent:'center',gap:10,opacity:0.6}}>
+          {['FPX','VISA','MASTER'].map(b=><div key={b} style={{background:'rgba(255,255,255,0.06)',padding:'4px 10px',borderRadius:5,fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.6)',letterSpacing:'0.1em'}}>{b}</div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══ HISTORY TAB ══════════════════════════════════════════════
-function HistoryTab({events, teamA, teamB, matchHistory, dispatch}) {
+function HistoryTab({events, teamA, teamB, matchHistory, dispatch, onViewMatch}) {
   const [expandId, setExpandId] = useState(null);
   const waveColor = w=>WAVES.find(x=>x.id===w)?.color||'rgba(255,255,255,0.1)';
   const waveLabel = w=>WAVES.find(x=>x.id===w)?.label||'';
@@ -921,7 +1502,15 @@ function HistoryTab({events, teamA, teamB, matchHistory, dispatch}) {
               </div>
               <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:3}}>{m.date} · {m.events.length} events</div>
             </div>
-            <div style={{fontFamily:'Barlow Condensed',fontSize:18,color:'rgba(255,255,255,0.3)'}}>{expandId===m.id?'▲':'▼'}</div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              {onViewMatch&&<button className="btn" onClick={(e)=>{e.stopPropagation();onViewMatch(m.id);}}
+                style={{background:'linear-gradient(90deg,#FF3DBD,#9B2BFB)',border:'none',
+                  borderRadius:8,padding:'7px 14px',fontFamily:'Barlow Condensed',fontWeight:900,
+                  fontSize:11,color:'white',letterSpacing:'0.1em',boxShadow:'0 2px 10px rgba(255,61,189,0.3)'}}>
+                📂 BUKA MATCH
+              </button>}
+              <div style={{fontFamily:'Barlow Condensed',fontSize:18,color:'rgba(255,255,255,0.3)'}}>{expandId===m.id?'▲':'▼'}</div>
+            </div>
           </div>
           {expandId===m.id&&<div style={{marginTop:12,borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:12}}>
             {[...m.events].reverse().slice(0,30).map((e,i)=>renderEvent(e,i,m.teamA,m.teamB))}
@@ -975,7 +1564,7 @@ function DatabaseTab({teamDB, setTeamDB, matchTeams, setMatchTeams}) {
         </div>
       </div>
 
-      <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em',marginBottom:10}}>TEAM DATABASE ({teamDB.length})</div>
+      <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em',marginBottom:10}}>SENARAI TEAM ({teamDB.length})</div>
       {teamDB.map(t=><div key={t.id} style={{background:'rgba(255,255,255,0.03)',borderRadius:12,marginBottom:8,border:'1px solid '+(editId===t.id?t.color+'50':'rgba(255,255,255,0.06)'),overflow:'hidden'}}>
         {editId===t.id&&draft
           ?<div style={{padding:'14px'}}>
@@ -1016,50 +1605,113 @@ function DatabaseTab({teamDB, setTeamDB, matchTeams, setMatchTeams}) {
   );
 }
 
-// ═══ ROOT ═════════════════════════════════════════════════════
-export default function HandballApp() {
+// ═══ MAIN APP (after auth) ═══════════════════════════════════
+function MainApp({ user, subscription, onLogout }) {
   const [events, dispatch] = useReducer(evReducer, []);
   const [teamDB, setTeamDB] = useState(DEFAULT_DB);
-  const [matchTeams, setMatchTeams] = useState({A:'ned', B:'nor'});
+  const [matchTeams, setMatchTeams] = useState({A:'kdh', B:'png'});
   const [matchHistory, setMatchHistory] = useState([]);
+  const [cloudLoading, setCloudLoading] = useState(true);
+  const [cloudSaving, setCloudSaving] = useState(false);
+  const [cloudSaved, setCloudSaved] = useState(false); // show ✓ Saved briefly
+
+  // Load match history from Supabase on startup
+  useEffect(()=>{
+    if (!user) return;
+    setCloudLoading(true);
+    loadMatchHistory(user.id)
+      .then(history => {
+        if (history.length > 0) setMatchHistory(history);
+      })
+      .finally(()=>setCloudLoading(false));
+  },[user]);
   const [activeTeam, setActiveTeam] = useState('A');
   const [selZone, setSelZone] = useState(null);
   const [tab, setTab] = useState('overview');
   const [wave, setWave] = useState('ALL');
   const [showEndModal, setShowEndModal] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [actionModal, setActionModal] = useState(null);
+  const [viewingMatchId, setViewingMatchId] = useState(null);
   const mobile = useIsMobile();
   const clock = useClock();
 
-  const teamA = teamDB.find(t=>t.id===matchTeams.A) || teamDB[0];
-  const teamB = teamDB.find(t=>t.id===matchTeams.B) || teamDB[1];
+  // ─── Derived state: current OR viewing past match ───
+  const viewMatch = viewingMatchId ? matchHistory.find(m=>m.id===viewingMatchId) : null;
+  const isViewing = !!viewMatch;
+
+  const teamA = isViewing ? viewMatch.teamA : (teamDB.find(t=>t.id===matchTeams.A) || teamDB[0]);
+  const teamB = isViewing ? viewMatch.teamB : (teamDB.find(t=>t.id===matchTeams.B) || teamDB[1]);
   const curTeam = activeTeam==='A' ? teamA : teamB;
 
-  const goalA = events.filter(e=>e.team==='A'&&e.outcome==='GOAL').length;
-  const goalB = events.filter(e=>e.team==='B'&&e.outcome==='GOAL').length;
-  const statsA = useGlobalStats(events,'A','B',wave);
-  const statsB = useGlobalStats(events,'B','A',wave);
+  const displayEvents = isViewing ? viewMatch.events : events;
+  const goalA = isViewing ? viewMatch.score.A : events.filter(e=>e.team==='A'&&e.outcome==='GOAL').length;
+  const goalB = isViewing ? viewMatch.score.B : events.filter(e=>e.team==='B'&&e.outcome==='GOAL').length;
+  const statsA = useGlobalStats(displayEvents,'A','B',wave);
+  const statsB = useGlobalStats(displayEvents,'B','A',wave);
 
-  const handleShot = (ev)=>{ dispatch({type:'ADD',ev}); setSelZone(null); };
-  const handleAction = (ev)=>{ dispatch({type:'ADD',ev}); setActionModal(null); };
-  // actionModal = {action:'BLOCK'|'STEAL'|'TO'|'FOUL', teamSide:'A'|'B'} or null
+  // When viewing past match, freeze clock to show final state
+  const displayClock = isViewing
+    ? { seconds: viewMatch.events[viewMatch.events.length-1]?.clock || 0,
+        half: viewMatch.events[viewMatch.events.length-1]?.half || 2,
+        running:false, setSeconds:()=>{}, setHalf:()=>{}, setRunning:()=>{} }
+    : clock;
 
-  const confirmEnd = ()=>{
-    setMatchHistory(h=>[{
-      id:Date.now(), date:new Date().toLocaleString(),
-      teamA:{...teamA}, teamB:{...teamB},
-      score:{A:goalA, B:goalB}, events:[...events],
-    },...h]);
+  const handleShot = (ev)=>{ if(isViewing) return; dispatch({type:'ADD',ev}); setSelZone(null); };
+  const handleAction = (ev)=>{ if(isViewing) return; dispatch({type:'ADD',ev}); setActionModal(null); };
+
+  const enterViewMode = (matchId)=>{
+    setViewingMatchId(matchId);
+    setTab('overview');
+  };
+  const exitViewMode = ()=>{ setViewingMatchId(null); setTab('history'); };
+
+  const confirmEnd = async ()=>{
+    const matchData = {
+      id: Date.now(),
+      date: new Date().toLocaleString('en-MY'),
+      teamA: {...teamA},
+      teamB: {...teamB},
+      score: {A:goalA, B:goalB},
+      events: [...events],
+    };
+
+    // 1. Save locally first (instant)
+    setMatchHistory(h=>[matchData,...h]);
     dispatch({type:'CLEAR'});
     clock.setSeconds(0); clock.setHalf(1); clock.setRunning(false);
     setShowEndModal(false);
     setTab('history');
+
+    // 2. Save to cloud (background)
+    if (user) {
+      setCloudSaving(true);
+      const startTime = Date.now();
+      const result = await saveMatchToCloud(matchData, user.id);
+      // Ensure SAVING indicator visible at least 800ms
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 800) await new Promise(r=>setTimeout(r, 800-elapsed));
+      setCloudSaving(false);
+
+      if (result.success) {
+        setMatchHistory(h => h.map(m =>
+          m.id === matchData.id ? {...m, id: result.matchId} : m
+        ));
+        // Show ✓ Saved for 3 seconds
+        setCloudSaved(true);
+        setTimeout(()=>setCloudSaved(false), 3000);
+      } else {
+        console.error('Cloud save failed, data kept locally:', result.error);
+        alert('⚠️ Match disimpan lokal je. Cloud save gagal — cuba lagi nanti.\n\n'+result.error);
+      }
+    }
   };
 
   return (
   <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',flexDirection:'column',fontFamily:'Barlow,sans-serif'}}>
     <style>{CSS}</style>
     {showEndModal&&<EndMatchModal teamA={teamA} teamB={teamB} scoreA={goalA} scoreB={goalB} onConfirm={confirmEnd} onCancel={()=>setShowEndModal(false)}/>}
+    {showReport&&<MatchReport events={displayEvents} teamA={teamA} teamB={teamB} scoreA={goalA} scoreB={goalB} clock={displayClock} onClose={()=>setShowReport(false)}/>}
     {actionModal&&<ActionModal action={actionModal.action} team={actionModal.teamSide==='A'?teamA:teamB} side={actionModal.teamSide} clock={clock} onRecord={handleAction} onCancel={()=>setActionModal(null)}/>}
 
     {/* HEADER */}
@@ -1076,17 +1728,78 @@ export default function HandballApp() {
         <Badge team={teamB} size={mobile?24:30}/>
         {!mobile&&<span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:16,color:'white',whiteSpace:'nowrap'}}>{teamB.name.toUpperCase()}</span>}
       </div>
-      <Clock clock={clock} mobile={mobile}/>
-      <button className="endbtn" onClick={()=>setShowEndModal(true)}>{mobile?'⏹':'⏹ END MATCH'}</button>
+      <button className="endbtn" onClick={()=>isViewing?exitViewMode():setShowEndModal(true)}
+        style={isViewing?{background:'rgba(168,85,247,0.2)',border:'1px solid rgba(168,85,247,0.4)'}:{}}>
+        {isViewing?(mobile?'✕':'✕ EXIT VIEW'):(mobile?'⏹':'⏹ END MATCH')}
+      </button>
+      {/* Cloud status indicators */}
+      {cloudSaving&&<div style={{display:'flex',alignItems:'center',gap:5,
+        background:'rgba(52,211,153,0.12)',border:'1px solid rgba(52,211,153,0.3)',
+        borderRadius:7,padding:'4px 10px'}}>
+        <span className="pulse" style={{display:'inline-block',width:7,height:7,borderRadius:'50%',background:'#34D399'}}/>
+        <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,
+          color:'#34D399',letterSpacing:'0.12em'}}>{mobile?'☁':'☁ SAVING'}</span>
+      </div>}
+      {cloudSaved&&!cloudSaving&&<div className="pop" style={{display:'flex',alignItems:'center',gap:5,
+        background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.35)',
+        borderRadius:7,padding:'4px 10px'}}>
+        <span style={{fontSize:12,color:'#34D399'}}>✓</span>
+        <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,
+          color:'#34D399',letterSpacing:'0.12em'}}>{mobile?'OK':'SAVED'}</span>
+      </div>}
+      {cloudLoading&&<div style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,
+        color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em'}}>
+        {!mobile&&'LOADING...'}
+      </div>}
     </div>
+
+    {/* ─── TRIAL COUNTDOWN BANNER ─── */}
+    {subscription?.status==='trial'&&(()=>{
+      const days = daysRemaining(subscription);
+      const urgent = days<=7;
+      return <div style={{background:urgent?'rgba(220,38,38,0.12)':'rgba(255,61,189,0.08)',
+        borderBottom:`1px solid ${urgent?'rgba(220,38,38,0.3)':'rgba(255,61,189,0.2)'}`,
+        padding:'7px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',fontSize:12}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:14}}>{urgent?'⚠️':'✨'}</span>
+          <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:urgent?'#FCA5A5':'#FF93D7',letterSpacing:'0.1em'}}>
+            TRIAL {urgent?'TINGGAL':'AKTIF —'} <span style={{fontSize:14,marginLeft:3}}>{days} HARI {urgent?'LAGI':''}</span>
+          </span>
+        </div>
+        <button onClick={()=>setTab('pricing')}
+          style={{background:urgent?'#DC2626':'rgba(255,61,189,0.2)',
+            border:`1px solid ${urgent?'transparent':'rgba(255,61,189,0.4)'}`,borderRadius:7,
+            padding:'4px 12px',fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,
+            color:'white',letterSpacing:'0.1em',cursor:'pointer'}}>
+          UPGRADE NOW →
+        </button>
+      </div>;
+    })()}
+
+    {/* ─── VIEWING MODE BANNER ─── */}
+    {isViewing&&<div style={{background:'linear-gradient(90deg, rgba(168,85,247,0.15), rgba(155,43,251,0.15))',
+      borderBottom:'1px solid rgba(168,85,247,0.3)',padding:'8px 16px',
+      display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <span style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:10,color:'#C084FC',
+          background:'rgba(168,85,247,0.2)',padding:'3px 8px',borderRadius:5,letterSpacing:'0.2em'}}>📂 VIEWING MODE</span>
+        <span style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.7)'}}>
+          <strong style={{color:teamA.color}}>{teamA.name}</strong> vs <strong style={{color:teamB.color}}>{teamB.name}</strong>
+          <span style={{color:'rgba(255,255,255,0.4)',marginLeft:8}}>· {viewMatch.date}</span>
+        </span>
+      </div>
+      <span style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.45)',fontStyle:'italic'}}>
+        Read-only · Recording disabled
+      </span>
+    </div>}
 
     {/* TABS */}
     <div style={{background:'#0E1528',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',overflowX:'auto'}}>
-      {[['overview','OVERVIEW'],['attack','ATTACK CHART'],['stats','STATISTICS'],['players','PLAYERS'],['history','HISTORY'],['db','DATABASE']]
+      {[['overview','OVERVIEW'],['attack','ATTACK CHART'],['stats','STATISTICS'],['players','PLAYERS'],['history','HISTORY'],['db','TEAM SETUP'],['pricing','💎 PRICING']]
         .map(([id,lbl])=><button key={id} className={`tab ${tab===id?'on':''}`} onClick={()=>setTab(id)}>{lbl}</button>)}
     </div>
 
-    {tab==='overview'&&<OverviewTab events={events} teamA={teamA} teamB={teamB} clock={clock} scoreA={goalA} scoreB={goalB}/>}
+    {tab==='overview'&&<OverviewTab events={displayEvents} teamA={teamA} teamB={teamB} clock={displayClock} scoreA={goalA} scoreB={goalB} onPrintReport={()=>setShowReport(true)}/>}
 
     {/* ATTACK TAB */}
     {tab==='attack'&&<div style={{flex:1,display:mobile?'flex':'grid',flexDirection:'column',gridTemplateColumns:mobile?'1fr':'1fr 300px',overflow:'hidden',minHeight:0}}>
@@ -1113,10 +1826,20 @@ export default function HandballApp() {
           <button className="btn" onClick={()=>dispatch({type:'UNDO'})}
             style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(220,38,38,0.2)',borderRadius:8,padding:'5px 10px',fontWeight:700,fontSize:11,color:'rgba(252,129,129,0.7)'}}>↶ UNDO</button>
         </div>
+        {/* ─── MATCH CLOCK ─── (prominent placement so coach tak terlepas) */}
+        <div style={{background:'linear-gradient(90deg, rgba(255,61,189,0.08), rgba(155,43,251,0.08))',
+          border:'1px solid rgba(255,61,189,0.2)',borderRadius:12,padding:'10px 12px',
+          display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:9,color:'rgba(255,255,255,0.4)',letterSpacing:'0.18em'}}>⏱ MATCH CLOCK</span>
+            {clock.running&&<span className="pulse" style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#34D399'}}/>}
+          </div>
+          <Clock clock={clock} mobile={mobile}/>
+        </div>
         {/* Court */}
         <div style={{maxWidth:580,width:'100%',alignSelf:'center'}}>
-          <CourtSVG events={events} teamA={teamA} teamB={teamB} activeTeam={activeTeam}
-            onZoneClick={setSelZone} selZone={selZone} wave={wave} mobile={mobile}/>
+          <CourtSVG events={displayEvents} teamA={teamA} teamB={teamB} activeTeam={activeTeam}
+            onZoneClick={isViewing?()=>{}:setSelZone} selZone={selZone} wave={wave} mobile={mobile}/>
         </div>
         {/* Quick action buttons — Cara A (context-aware auto-assign) */}
         {(()=>{
@@ -1130,9 +1853,11 @@ export default function HandballApp() {
             {action:'FOUL',   icon:'⚠',  label:'FOUL',     teamSide:activeTeam, assignTo:curTeam,  bg:'rgba(220,38,38,0.12)',  border:'rgba(220,38,38,0.3)',  col:'#FCA5A5', hint:'attacker'},
           ];
           return actions.map(({action,icon,label,teamSide,assignTo,bg,border,col,hint})=>(
-            <button key={action} className="btn" onClick={()=>setActionModal({action,teamSide})}
+            <button key={action} className="btn" onClick={()=>!isViewing&&setActionModal({action,teamSide})}
+              disabled={isViewing}
               style={{background:bg,border:'1px solid '+border,borderRadius:10,padding:'8px 10px',
-                display:'flex',alignItems:'center',gap:8,width:'100%',textAlign:'left'}}>
+                display:'flex',alignItems:'center',gap:8,width:'100%',textAlign:'left',
+                opacity:isViewing?0.4:1,cursor:isViewing?'not-allowed':'pointer'}}>
               <span style={{fontSize:18,minWidth:22}}>{icon}</span>
               <div style={{flex:1}}>
                 <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:13,color:col,letterSpacing:'0.08em'}}>{label}</div>
@@ -1173,10 +1898,300 @@ export default function HandballApp() {
       </div>}
     </div>}
 
-    {tab==='stats'&&<StatisticsTab events={events} teamA={teamA} teamB={teamB} mobile={mobile}/>}
-    {tab==='players'&&<PlayersTab events={events} teamA={teamA} teamB={teamB} mobile={mobile}/>}
-    {tab==='history'&&<HistoryTab events={events} teamA={teamA} teamB={teamB} matchHistory={matchHistory} dispatch={dispatch}/>}
+    {tab==='stats'&&<StatisticsTab events={displayEvents} teamA={teamA} teamB={teamB} mobile={mobile}/>}
+    {tab==='players'&&<PlayersTab events={displayEvents} teamA={teamA} teamB={teamB} mobile={mobile}/>}
+    {tab==='history'&&<HistoryTab events={events} teamA={teamA} teamB={teamB} matchHistory={matchHistory} dispatch={dispatch} onViewMatch={enterViewMode}/>}
     {tab==='db'&&<DatabaseTab teamDB={teamDB} setTeamDB={setTeamDB} matchTeams={matchTeams} setMatchTeams={setMatchTeams}/>}
+    {tab==='pricing'&&<PricingTab user={user} subscription={subscription} onLogout={onLogout} onSelectPlan={(p)=>{
+      const periodLabel = p.period==='p1'?'1 bulan':p.period==='p6'?'6 bulan':'1 tahun';
+      alert(`Plan dipilih: ${p.plan} (${periodLabel}) — RM${p.price}\n\nUntuk activate, hubungi admin via WhatsApp dengan receipt pembayaran!`);
+    }}/>}
   </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AUTH COMPONENTS (Login / Sign Up / Paywall / Wrapper)
+// ═══════════════════════════════════════════════════════════════
+
+function LoadingScreen({msg='Loading...'}) {
+  return (
+    <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Barlow,sans-serif',color:'white'}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap');
+        @keyframes spn{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+        .spn{animation:spn 1s linear infinite}`}</style>
+      <div style={{textAlign:'center'}}>
+        <div className="spn" style={{width:48,height:48,borderRadius:'50%',border:'3px solid rgba(255,61,189,0.2)',borderTopColor:'#FF3DBD',margin:'0 auto'}}/>
+        <div style={{marginTop:16,fontFamily:'Barlow Condensed',fontWeight:800,fontSize:13,letterSpacing:'0.2em',color:'rgba(255,255,255,0.5)'}}>{msg}</div>
+      </div>
+    </div>
+  );
+}
+
+function AuthScreen({onSuccess}) {
+  const [mode, setMode] = useState('login'); // 'login' or 'signup'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+
+  const handleSubmit = async (e)=>{
+    e.preventDefault();
+    setError(''); setInfo(''); setLoading(true);
+    try {
+      if (mode==='login') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        onSuccess&&onSuccess();
+      } else {
+        if (!fullName.trim()) throw new Error('Sila masukkan nama penuh');
+        if (password.length < 6) throw new Error('Password mesti sekurang-kurangnya 6 aksara');
+        const { error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { full_name: fullName, phone } }
+        });
+        if (error) throw error;
+        setInfo('Akaun berjaya didaftar! Sila check email anda untuk verify (kalau setting Supabase memerlukan email confirmation). Atau cuba login sekarang.');
+        setMode('login');
+      }
+    } catch(err) {
+      setError(err.message||'Berlaku ralat. Cuba lagi.');
+    } finally { setLoading(false); }
+  };
+
+  const handleGoogleLogin = async ()=>{
+    setError(''); setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider:'google',
+        options:{ redirectTo: window.location.origin + window.location.pathname }
+      });
+      if (error) throw error;
+    } catch(err) { setError(err.message); setLoading(false); }
+  };
+
+  const handleForgotPwd = async ()=>{
+    if (!email) { setError('Sila masukkan email anda dulu'); return; }
+    setError(''); setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      setInfo('Link reset password telah dihantar ke email anda');
+    } catch(err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'Barlow,sans-serif'}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap');`}</style>
+      <div style={{background:'linear-gradient(180deg, rgba(255,61,189,0.05), transparent)',width:'100%',maxWidth:420,borderRadius:18,padding:'30px 28px',border:'1px solid rgba(255,255,255,0.08)',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
+        {/* Logo / Title */}
+        <div style={{textAlign:'center',marginBottom:24}}>
+          <div style={{display:'inline-block',background:'linear-gradient(135deg,#FF3DBD,#9B2BFB)',
+            width:54,height:54,borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:28,marginBottom:14,boxShadow:'0 4px 16px rgba(255,61,189,0.3)'}}>🤾</div>
+          <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:24,color:'white',letterSpacing:'0.02em'}}>
+            HANDBALL ANALYSIS
+          </div>
+          <div style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.4)',marginTop:4}}>
+            {mode==='login'?'Sign in to continue':'Create your account · 30 days free trial'}
+          </div>
+        </div>
+
+        {/* Mode toggle */}
+        <div style={{display:'flex',background:'rgba(255,255,255,0.04)',borderRadius:10,padding:3,marginBottom:18}}>
+          {[['login','LOGIN'],['signup','SIGN UP']].map(([id,lbl])=>
+            <button key={id} onClick={()=>{setMode(id);setError('');setInfo('');}}
+              style={{flex:1,padding:'9px',borderRadius:7,border:'none',cursor:'pointer',
+                background:mode===id?'rgba(255,61,189,0.15)':'transparent',
+                fontFamily:'Barlow Condensed',fontWeight:800,fontSize:12,
+                color:mode===id?'#FF93D7':'rgba(255,255,255,0.4)',letterSpacing:'0.15em'}}>{lbl}</button>
+          )}
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit}>
+          {mode==='signup'&&<>
+            <div style={{marginBottom:10}}>
+              <label style={{display:'block',fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>Nama Penuh *</label>
+              <input type="text" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Ahmad bin Abdullah" required
+                style={inpStyle}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{display:'block',fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>No. Telefon (optional)</label>
+              <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="012-3456789"
+                style={inpStyle}/>
+            </div>
+          </>}
+          <div style={{marginBottom:10}}>
+            <label style={{display:'block',fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>Email *</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="anda@example.com" required
+              style={inpStyle}/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:'block',fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>Password *</label>
+            <div style={{position:'relative'}}>
+              <input type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Min. 6 aksara" required minLength={6}
+                style={{...inpStyle,paddingRight:42}}/>
+              <button type="button" onClick={()=>setShowPwd(!showPwd)} 
+                style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:14}}>
+                {showPwd?'👁':'👁‍🗨'}
+              </button>
+            </div>
+            {mode==='login'&&<button type="button" onClick={handleForgotPwd}
+              style={{background:'none',border:'none',color:'#FF93D7',fontSize:11,cursor:'pointer',marginTop:6,padding:0,fontFamily:'Barlow'}}>
+              Lupa password?
+            </button>}
+          </div>
+
+          {error&&<div style={{background:'rgba(220,38,38,0.12)',border:'1px solid rgba(220,38,38,0.3)',borderRadius:8,padding:'8px 12px',color:'#FCA5A5',fontSize:12,fontFamily:'Barlow',marginBottom:12}}>⚠ {error}</div>}
+          {info&&<div style={{background:'rgba(52,211,153,0.12)',border:'1px solid rgba(52,211,153,0.3)',borderRadius:8,padding:'8px 12px',color:'#6EE7B7',fontSize:12,fontFamily:'Barlow',marginBottom:12}}>✓ {info}</div>}
+
+          <button type="submit" disabled={loading}
+            style={{width:'100%',padding:'12px',borderRadius:10,border:'none',cursor:loading?'wait':'pointer',
+              background:'linear-gradient(90deg,#FF3DBD,#9B2BFB)',
+              fontFamily:'Barlow Condensed',fontWeight:900,fontSize:14,color:'white',letterSpacing:'0.1em',
+              boxShadow:'0 4px 16px rgba(255,61,189,0.3)',opacity:loading?0.6:1}}>
+            {loading?'TUNGGU...':mode==='login'?'LOGIN':'CREATE ACCOUNT'}
+          </button>
+        </form>
+
+        {/* Divider */}
+        <div style={{display:'flex',alignItems:'center',gap:10,margin:'16px 0'}}>
+          <div style={{flex:1,height:1,background:'rgba(255,255,255,0.08)'}}/>
+          <span style={{fontFamily:'Barlow',fontSize:10,color:'rgba(255,255,255,0.3)',letterSpacing:'0.15em'}}>ATAU</span>
+          <div style={{flex:1,height:1,background:'rgba(255,255,255,0.08)'}}/>
+        </div>
+
+        {/* Google login */}
+        <button onClick={handleGoogleLogin} disabled={loading}
+          style={{width:'100%',padding:'10px',borderRadius:10,border:'1px solid rgba(255,255,255,0.12)',
+            background:'rgba(255,255,255,0.04)',cursor:loading?'wait':'pointer',
+            fontFamily:'Barlow',fontWeight:600,fontSize:13,color:'white',
+            display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+          <span style={{fontSize:16}}>🇬</span>
+          <span>Continue with Google</span>
+        </button>
+
+        {/* Trial info for signup */}
+        {mode==='signup'&&<div style={{marginTop:16,padding:'10px 12px',background:'rgba(255,61,189,0.06)',borderRadius:8,border:'1px solid rgba(255,61,189,0.15)'}}>
+          <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'#FF93D7',letterSpacing:'0.1em',marginBottom:4}}>✨ 30 HARI PERCUMA</div>
+          <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.45}}>
+            Trial start automatic bila daftar. Akses semua features tanpa kad kredit.
+          </div>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+const inpStyle = {
+  width:'100%',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)',
+  borderRadius:8,padding:'10px 12px',color:'white',fontFamily:'Barlow,sans-serif',fontSize:13,
+  outline:'none',boxSizing:'border-box',
+};
+
+function PaywallScreen({user, subscription, onLogout}) {
+  return (
+    <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'Barlow,sans-serif'}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap');`}</style>
+      <div style={{maxWidth:480,width:'100%',background:'rgba(255,255,255,0.03)',borderRadius:18,padding:'28px 26px',border:'1px solid rgba(255,255,255,0.08)',textAlign:'center'}}>
+        <div style={{fontSize:48,marginBottom:14}}>⏰</div>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:22,color:'white',marginBottom:8}}>
+          Trial Telah Tamat
+        </div>
+        <div style={{fontFamily:'Barlow',fontSize:13,color:'rgba(255,255,255,0.5)',marginBottom:20,lineHeight:1.5}}>
+          Trial 30 hari anda telah berakhir.<br/>
+          Untuk teruskan guna sistem, sila pilih plan dan buat pembayaran.
+        </div>
+
+        <div style={{background:'rgba(255,61,189,0.08)',border:'1px solid rgba(255,61,189,0.2)',borderRadius:10,padding:'14px',marginBottom:18,textAlign:'left'}}>
+          <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.5)',letterSpacing:'0.2em',marginBottom:8}}>AKAUN ANDA</div>
+          <div style={{fontFamily:'Barlow',fontSize:13,color:'white',marginBottom:4}}>{user?.email}</div>
+          <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.45)'}}>
+            Trial tamat: {subscription?.trial_end ? new Date(subscription.trial_end).toLocaleDateString('en-MY') : '-'}
+          </div>
+        </div>
+
+        <div style={{background:'rgba(255,255,255,0.02)',borderRadius:10,padding:'14px',marginBottom:18,textAlign:'left'}}>
+          <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.5)',letterSpacing:'0.2em',marginBottom:10}}>CARA AKTIFKAN</div>
+          <div style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.6)',lineHeight:1.6}}>
+            1. Pilih plan yang sesuai (Individual / Team / Club)<br/>
+            2. Buat pembayaran via FPX / online banking<br/>
+            3. Hantar receipt ke admin via WhatsApp<br/>
+            4. Admin approve dalam masa 1 hari
+          </div>
+        </div>
+
+        <div style={{display:'flex',gap:8,flexDirection:'column'}}>
+          <a href="https://wa.me/60123456789?text=Saya%20nak%20activate%20handball%20app"
+            style={{padding:'12px',borderRadius:10,background:'linear-gradient(90deg,#FF3DBD,#9B2BFB)',
+              fontFamily:'Barlow Condensed',fontWeight:900,fontSize:13,color:'white',letterSpacing:'0.1em',
+              textDecoration:'none',boxShadow:'0 4px 16px rgba(255,61,189,0.3)'}}>
+            💬 HUBUNGI ADMIN VIA WHATSAPP
+          </a>
+          <button onClick={onLogout}
+            style={{padding:'10px',borderRadius:10,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',
+              fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'rgba(255,255,255,0.5)',letterSpacing:'0.1em',cursor:'pointer'}}>
+            LOG OUT
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══ ROOT WRAPPER (Auth + Subscription Check) ═════════════════
+export default function HandballApp() {
+  const [authState, setAuthState] = useState('loading'); // 'loading' | 'unauth' | 'expired' | 'ok'
+  const [user, setUser] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+
+  const checkAuth = async ()=>{
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setAuthState('unauth'); return; }
+      setUser(session.user);
+
+      const { data: sub, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') console.error('Sub load error:', error);
+      setSubscription(sub);
+      setAuthState(isSubscriptionActive(sub) ? 'ok' : 'expired');
+    } catch(err) {
+      console.error('Auth check failed:', err);
+      setAuthState('unauth');
+    }
+  };
+
+  useEffect(()=>{
+    checkAuth();
+    const { data: { subscription: listener } } = supabase.auth.onAuthStateChange((event)=>{
+      if (event==='SIGNED_OUT') {
+        setUser(null); setSubscription(null); setAuthState('unauth');
+      } else if (event==='SIGNED_IN' || event==='TOKEN_REFRESHED') {
+        checkAuth();
+      }
+    });
+    return ()=>listener?.unsubscribe();
+  },[]);
+
+  const handleLogout = async ()=>{
+    await supabase.auth.signOut();
+    setAuthState('unauth');
+  };
+
+  if (authState==='loading') return <LoadingScreen msg="Loading..."/>;
+  if (authState==='unauth')  return <AuthScreen onSuccess={checkAuth}/>;
+  if (authState==='expired') return <PaywallScreen user={user} subscription={subscription} onLogout={handleLogout}/>;
+  
+  return <MainApp user={user} subscription={subscription} onLogout={handleLogout}/>;
 }
