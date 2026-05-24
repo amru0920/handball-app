@@ -1639,7 +1639,8 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
   };
 
   return (
-    <div className="sc" style={{overflowY:'auto',overflowX:'hidden',padding:'20px 16px',maxWidth:980,margin:'0 auto'}}>
+    <div className="sc" style={{overflowY:'auto',overflowX:'hidden',padding:'20px 16px',
+      maxWidth:980,margin:'0 auto',width:'100%',minWidth:0,boxSizing:'border-box'}}>
       {/* Account info card */}
       {user&&<div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',
         borderRadius:12,padding:'12px 14px',marginBottom:20,display:'flex',alignItems:'center',
