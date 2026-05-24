@@ -1637,17 +1637,19 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
   };
 
   return (
-    <div className="sc" style={{overflowY:'auto',padding:'20px 16px',maxWidth:980,margin:'0 auto'}}>
+    <div className="sc" style={{overflowY:'auto',overflowX:'hidden',padding:'20px 16px',maxWidth:980,margin:'0 auto'}}>
       {/* Account info card */}
       {user&&<div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',
-        borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <div style={{width:38,height:38,borderRadius:'50%',background:'linear-gradient(135deg,#FF3DBD,#9B2BFB)',
-            display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Barlow Condensed',fontWeight:900,fontSize:16,color:'white'}}>
+        borderRadius:12,padding:'12px 14px',marginBottom:20,display:'flex',alignItems:'center',
+        justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0,flex:1}}>
+          <div style={{flexShrink:0,width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#FF3DBD,#9B2BFB)',
+            display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Barlow Condensed',fontWeight:900,fontSize:15,color:'white'}}>
             {(user.email||'?').charAt(0).toUpperCase()}
           </div>
-          <div>
-            <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:14,color:'white'}}>{user.email}</div>
+          <div style={{minWidth:0,flex:1}}>
+            <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:13,color:'white',
+              overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.email}</div>
             <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:2}}>
               {subscription?.status==='trial'
                 ? `Trial · ${daysRemaining(subscription)} hari lagi`
@@ -1658,7 +1660,7 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
           </div>
         </div>
         {onLogout&&<button onClick={onLogout}
-          style={{background:'rgba(220,38,38,0.1)',border:'1px solid rgba(220,38,38,0.2)',borderRadius:8,
+          style={{flexShrink:0,background:'rgba(220,38,38,0.1)',border:'1px solid rgba(220,38,38,0.2)',borderRadius:8,
             padding:'7px 14px',fontFamily:'Barlow Condensed',fontWeight:700,fontSize:11,
             color:'rgba(252,129,129,0.8)',letterSpacing:'0.1em',cursor:'pointer'}}>
           LOG OUT
