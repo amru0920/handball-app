@@ -458,7 +458,7 @@ function CourtSVG({events, teamA, teamB, activeTeam, onZoneClick, selZone, wave,
 }
 
 // ═══ SHOT PANEL (with assist) ═════════════════════════════════
-function ShotPanel({zone, team, side, wave, clock, onRecord, onCancel}) {
+function ShotPanel({zone, team, side, wave, clock, onRecord, onCancel, focusMode={}}) {
   const [pid, setPid] = useState(null);
   const [step, setStep] = useState('outcome'); // 'outcome' or 'assist'
   const [outcome, setOutcome] = useState(null);
@@ -469,12 +469,13 @@ function ShotPanel({zone, team, side, wave, clock, onRecord, onCancel}) {
   ];
 
   const doRecord = (oc, assistPid=null)=>{
-    onRecord({team:side, zone:zone.id, outcome:oc, pid, assistPid,
+    onRecord({team:side, zone:zone.id, outcome:oc, pid:focusMode.players!==false?pid:null,
+      assistPid:focusMode.assists!==false?assistPid:null,
       wave:wave==='ALL'?'3':wave, half:clock.half, clock:clock.seconds});
   };
 
   const handleOutcome = (oc)=>{
-    if (oc==='GOAL' && pid && team.players.length>1) {
+    if (oc==='GOAL' && pid && team.players.length>1 && focusMode.assists!==false) {
       setOutcome(oc);
       setStep('assist');
     } else {
@@ -523,7 +524,7 @@ function ShotPanel({zone, team, side, wave, clock, onRecord, onCancel}) {
         <span style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:16,color:'white',letterSpacing:'0.08em'}}>{o.label}</span>
       </button>)}
     </div>
-    {team.players.length > 0 && <>
+    {team.players.length > 0 && focusMode.players!==false && <>
       <div style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:10,color:'rgba(255,255,255,0.35)',letterSpacing:'0.2em',marginBottom:4}}>PLAYER (OPTIONAL)</div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5}}>
         {team.players.map(p=><button key={p.id} className="btn" onClick={()=>setPid(pid===p.id?null:p.id)}
@@ -1854,7 +1855,7 @@ function HistoryTab({events, teamA, teamB, matchHistory, dispatch, onViewMatch})
 }
 
 // ═══ DATABASE TAB ═════════════════════════════════════════════
-function DatabaseTab({teamDB, setTeamDB, matchTeams, setMatchTeams}) {
+function DatabaseTab({teamDB, setTeamDB, matchTeams, setMatchTeams, focusMode, setFocusMode}) {
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState(null);
   const startEdit = (t)=>{ setEditId(t.id); setDraft(JSON.parse(JSON.stringify(t))); };
@@ -1885,6 +1886,76 @@ function DatabaseTab({teamDB, setTeamDB, matchTeams, setMatchTeams}) {
           </div>)}
         </div>
       </div>
+
+      {/* ─── FOCUS MODE ─── */}
+      {setFocusMode&&(()=>{
+        const presets = {
+          quick:    { players:false, assists:false, blockSteal:false, turnover:true,  foul:false, wave:true,  label:'Quick',    desc:'Hanya shots + wave' },
+          tactical: { players:true,  assists:true,  blockSteal:false, turnover:true,  foul:false, wave:true,  label:'Tactical', desc:'Players + serangan' },
+          defensive:{ players:true,  assists:false, blockSteal:true,  turnover:false, foul:true,  wave:false, label:'Defensive',desc:'Block, steal, foul' },
+          full:     { players:true,  assists:true,  blockSteal:true,  turnover:true,  foul:true,  wave:true,  label:'Full',     desc:'Semua features' },
+        };
+        const currentPreset = Object.keys(presets).find(k=>{
+          const p = presets[k];
+          return p.players===focusMode.players && p.assists===focusMode.assists &&
+                 p.blockSteal===focusMode.blockSteal && p.turnover===focusMode.turnover &&
+                 p.foul===focusMode.foul && p.wave===focusMode.wave;
+        }) || 'custom';
+        const toggles = [
+          {key:'players',    icon:'👤', label:'Assign Player',  desc:'Track siapa shoot'},
+          {key:'assists',    icon:'🎯', label:'Assists',        desc:'Track passer yang assist gol'},
+          {key:'blockSteal', icon:'🛡', label:'Block & Steal',  desc:'Defensive plays'},
+          {key:'turnover',   icon:'↻', label:'Turnover',       desc:'Hilang bola tanpa shoot'},
+          {key:'foul',       icon:'⚠', label:'Foul & Cards',   desc:'Disciplinary actions'},
+          {key:'wave',       icon:'⚡', label:'Wave Selector',  desc:'1st/2nd/3rd wave filter'},
+        ];
+        const activeCount = Object.values(focusMode).filter(Boolean).length;
+        return <div style={{background:'rgba(255,61,189,0.04)',border:'1px solid rgba(255,61,189,0.15)',borderRadius:14,padding:'14px',marginBottom:18}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,gap:8,flexWrap:'wrap'}}>
+            <div>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'#FF93D7',letterSpacing:'0.18em'}}>🎯 FOCUS ANALISIS</div>
+              <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:2}}>Pilih apa yang nak ditrack. Lagi sedikit = lagi tepat.</div>
+            </div>
+            <div style={{background:'rgba(255,61,189,0.15)',border:'1px solid rgba(255,61,189,0.3)',borderRadius:6,padding:'3px 9px',fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'#FF93D7',letterSpacing:'0.1em'}}>
+              {activeCount}/6 AKTIF
+            </div>
+          </div>
+
+          {/* Preset buttons */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(85px,1fr))',gap:5,marginBottom:12}}>
+            {Object.entries(presets).map(([k,p])=><button key={k} className="btn" onClick={()=>setFocusMode({...p, label:undefined, desc:undefined})}
+              style={{background:currentPreset===k?'rgba(255,61,189,0.2)':'rgba(255,255,255,0.04)',
+                border:`1px solid ${currentPreset===k?'rgba(255,61,189,0.4)':'rgba(255,255,255,0.07)'}`,
+                borderRadius:8,padding:'7px 6px',display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:currentPreset===k?'#FF93D7':'rgba(255,255,255,0.7)',letterSpacing:'0.05em'}}>{p.label}</div>
+              <div style={{fontFamily:'Barlow',fontSize:8,color:'rgba(255,255,255,0.35)',textAlign:'center',lineHeight:1.2}}>{p.desc}</div>
+            </button>)}
+            {currentPreset==='custom'&&<div style={{background:'rgba(168,85,247,0.2)',border:'1px solid rgba(168,85,247,0.4)',borderRadius:8,padding:'7px 6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'#C084FC',letterSpacing:'0.05em'}}>Custom</div>
+              <div style={{fontFamily:'Barlow',fontSize:8,color:'rgba(255,255,255,0.35)'}}>Manual</div>
+            </div>}
+          </div>
+
+          {/* Toggle items */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:6}}>
+            {toggles.map(t=><button key={t.key} className="btn" onClick={()=>setFocusMode(m=>({...m,[t.key]:!m[t.key]}))}
+              style={{background:focusMode[t.key]?'rgba(52,211,153,0.08)':'rgba(255,255,255,0.03)',
+                border:`1px solid ${focusMode[t.key]?'rgba(52,211,153,0.25)':'rgba(255,255,255,0.06)'}`,
+                borderRadius:9,padding:'9px 10px',display:'flex',alignItems:'center',gap:8,textAlign:'left'}}>
+              <div style={{width:18,height:18,borderRadius:5,background:focusMode[t.key]?'#34D399':'rgba(255,255,255,0.06)',
+                border:focusMode[t.key]?'none':'1px solid rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:11,color:'white',fontWeight:700}}>
+                {focusMode[t.key]?'✓':''}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:focusMode[t.key]?'white':'rgba(255,255,255,0.5)',letterSpacing:'0.05em'}}>
+                  {t.icon} {t.label}
+                </div>
+                <div style={{fontFamily:'Barlow',fontSize:9,color:'rgba(255,255,255,0.4)',marginTop:1,lineHeight:1.3}}>{t.desc}</div>
+              </div>
+            </button>)}
+          </div>
+        </div>;
+      })()}
 
       <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'rgba(255,255,255,0.3)',letterSpacing:'0.2em',marginBottom:10}}>SENARAI TEAM ({teamDB.length})</div>
       {teamDB.map(t=><div key={t.id} style={{background:'rgba(255,255,255,0.03)',borderRadius:12,marginBottom:8,border:'1px solid '+(editId===t.id?t.color+'50':'rgba(255,255,255,0.06)'),overflow:'hidden'}}>
@@ -1935,7 +2006,15 @@ function MainApp({ user, subscription, onLogout }) {
   const [matchHistory, setMatchHistory] = useState([]);
   const [cloudLoading, setCloudLoading] = useState(true);
   const [cloudSaving, setCloudSaving] = useState(false);
-  const [cloudSaved, setCloudSaved] = useState(false); // show ✓ Saved briefly
+  const [cloudSaved, setCloudSaved] = useState(false);
+  const [focusMode, setFocusMode] = useState({
+    players:   true,  // assign shot/event to specific player
+    assists:   true,  // track assists on goals
+    blockSteal:true,  // BLOCK & STEAL buttons
+    turnover:  true,  // TURNOVER button
+    foul:      true,  // FOUL button & cards
+    wave:      true,  // wave selector (1st/2nd/3rd)
+  });
 
   // Load match history from Supabase on startup
   useEffect(()=>{
@@ -2127,12 +2206,12 @@ function MainApp({ user, subscription, onLogout }) {
     {tab==='attack'&&<div style={{flex:1,display:mobile?'flex':'grid',flexDirection:'column',gridTemplateColumns:mobile?'1fr':'1fr 300px',overflow:'hidden',minHeight:0}}>
       <div style={{padding:mobile?'10px':'12px',display:'flex',flexDirection:'column',gap:9,overflowY:'auto',flex:mobile?1:undefined}}>
         {/* Waves */}
-        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+        {focusMode.wave&&<div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
           {WAVES.map(w=><button key={w.id} className="wave-btn" onClick={()=>{setWave(w.id);setSelZone(null);}}
             style={{background:wave===w.id?w.id==='ALL'?'rgba(255,255,255,0.2)':w.color:'rgba(255,255,255,0.06)',
               border:`1px solid ${wave===w.id?(w.id==='ALL'?'rgba(255,255,255,0.25)':w.color):'rgba(255,255,255,0.07)'}`,
               opacity:wave===w.id?1:0.6}}>{w.label}</button>)}
-        </div>
+        </div>}
         {/* Team toggle */}
         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
           <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'0.15em'}}>RECORDING:</span>
@@ -2168,12 +2247,13 @@ function MainApp({ user, subscription, onLogout }) {
           const oppSide = activeTeam==='A'?'B':'A';
           const oppTeam = activeTeam==='A'?teamB:teamA;
           // BLOCK/STEAL → opponent gets credit | TO/FOUL → attacking team gets credit
-          const actions = [
-            {action:'BLOCK',  icon:'🛡', label:'BLOCK',    teamSide:oppSide,    assignTo:oppTeam,  bg:'rgba(59,130,246,0.12)', border:'rgba(59,130,246,0.3)', col:'#93C5FD', hint:'defender'},
-            {action:'STEAL',  icon:'🤚', label:'STEAL',    teamSide:oppSide,    assignTo:oppTeam,  bg:'rgba(16,185,129,0.12)', border:'rgba(16,185,129,0.3)', col:'#6EE7B7', hint:'defender'},
-            {action:'TO',     icon:'↻',  label:'TURNOVER', teamSide:activeTeam, assignTo:curTeam,  bg:'rgba(245,158,11,0.12)', border:'rgba(245,158,11,0.3)', col:'#FCD34D', hint:'attacker'},
-            {action:'FOUL',   icon:'⚠',  label:'FOUL',     teamSide:activeTeam, assignTo:curTeam,  bg:'rgba(220,38,38,0.12)',  border:'rgba(220,38,38,0.3)',  col:'#FCA5A5', hint:'attacker'},
+          const allActions = [
+            {action:'BLOCK',  icon:'🛡', label:'BLOCK',    teamSide:oppSide,    assignTo:oppTeam,  bg:'rgba(59,130,246,0.12)', border:'rgba(59,130,246,0.3)', col:'#93C5FD', hint:'defender', focus:'blockSteal'},
+            {action:'STEAL',  icon:'🤚', label:'STEAL',    teamSide:oppSide,    assignTo:oppTeam,  bg:'rgba(16,185,129,0.12)', border:'rgba(16,185,129,0.3)', col:'#6EE7B7', hint:'defender', focus:'blockSteal'},
+            {action:'TO',     icon:'↻',  label:'TURNOVER', teamSide:activeTeam, assignTo:curTeam,  bg:'rgba(245,158,11,0.12)', border:'rgba(245,158,11,0.3)', col:'#FCD34D', hint:'attacker', focus:'turnover'},
+            {action:'FOUL',   icon:'⚠',  label:'FOUL',     teamSide:activeTeam, assignTo:curTeam,  bg:'rgba(220,38,38,0.12)',  border:'rgba(220,38,38,0.3)',  col:'#FCA5A5', hint:'attacker', focus:'foul'},
           ];
+          const actions = allActions.filter(a=>focusMode[a.focus]);
           return actions.map(({action,icon,label,teamSide,assignTo,bg,border,col,hint})=>(
             <button key={action} className="btn" onClick={()=>!isViewing&&setActionModal({action,teamSide})}
               disabled={isViewing}
@@ -2204,7 +2284,7 @@ function MainApp({ user, subscription, onLogout }) {
       {!mobile&&<div style={{background:'#0E1528',borderLeft:'1px solid rgba(255,255,255,0.07)',padding:'14px',overflowY:'auto'}}>
         {selZone
           ?<ShotPanel zone={selZone} team={curTeam} side={activeTeam} wave={wave} clock={clock}
-            onRecord={handleShot} onCancel={()=>setSelZone(null)}/>
+            onRecord={handleShot} onCancel={()=>setSelZone(null)} focusMode={focusMode}/>
           :<><div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'rgba(255,255,255,0.28)',letterSpacing:'0.2em',marginBottom:12}}>
               {curTeam.name.toUpperCase()} SUMMARY{wave!=='ALL'?` — ${WAVES.find(w=>w.id===wave)?.label}`:''}
             </div>
@@ -2215,7 +2295,7 @@ function MainApp({ user, subscription, onLogout }) {
       {mobile&&selZone&&<div className="overlay" onClick={(e)=>{if(e.target===e.currentTarget)setSelZone(null);}}>
         <div className="sheet pop">
           <ShotPanel zone={selZone} team={curTeam} side={activeTeam} wave={wave} clock={clock}
-            onRecord={handleShot} onCancel={()=>setSelZone(null)}/>
+            onRecord={handleShot} onCancel={()=>setSelZone(null)} focusMode={focusMode}/>
         </div>
       </div>}
     </div>}
@@ -2224,7 +2304,7 @@ function MainApp({ user, subscription, onLogout }) {
     {tab==='players'&&<PlayersTab events={displayEvents} teamA={teamA} teamB={teamB} mobile={mobile}/>}
     {tab==='history'&&<HistoryTab events={events} teamA={teamA} teamB={teamB} matchHistory={matchHistory} dispatch={dispatch} onViewMatch={enterViewMode}/>}
     {tab==='tutorial'&&<TutorialTab/>}
-    {tab==='db'&&<DatabaseTab teamDB={teamDB} setTeamDB={setTeamDB} matchTeams={matchTeams} setMatchTeams={setMatchTeams}/>}
+    {tab==='db'&&<DatabaseTab teamDB={teamDB} setTeamDB={setTeamDB} matchTeams={matchTeams} setMatchTeams={setMatchTeams} focusMode={focusMode} setFocusMode={setFocusMode}/>}
     {tab==='pricing'&&<PricingTab user={user} subscription={subscription} onLogout={onLogout} onSelectPlan={(p)=>{
       const periodLabel = p.period==='p1'?'1 bulan':p.period==='p6'?'6 bulan':'1 tahun';
       alert(`Plan dipilih: ${p.plan} (${periodLabel}) — RM${p.price}\n\nUntuk activate, hubungi admin via WhatsApp dengan receipt pembayaran!`);
