@@ -1567,6 +1567,7 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
   const [lang, setLang] = useState('BM');
   const [period, setPeriod] = useState('p12'); // 'p1' | 'p6' | 'p12'
   const [expandFaq, setExpandFaq] = useState(null);
+  const mobile = useIsMobile();
   const t = PRICING_TXT[lang];
 
   const planCard = (key, plan)=>{
@@ -1701,7 +1702,7 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
       </div>
 
       {/* Plan cards */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))',gap:14,marginBottom:30}}>
+      <div style={{display:'grid',gridTemplateColumns:mobile?'1fr':'repeat(3, 1fr)',gap:14,marginBottom:30}}>
         {planCard('individual', PRICING_DATA.individual)}
         {planCard('team', PRICING_DATA.team)}
         {planCard('club', PRICING_DATA.club)}
@@ -2109,7 +2110,7 @@ function MainApp({ user, subscription, onLogout }) {
   };
 
   return (
-  <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',flexDirection:'column',fontFamily:'Barlow,sans-serif'}}>
+  <div style={{background:'#0A1020',minHeight:'100vh',width:'100vw',maxWidth:'100%',overflowX:'hidden',display:'flex',flexDirection:'column',fontFamily:'Barlow,sans-serif'}}>
     <style>{CSS}</style>
     {showEndModal&&<EndMatchModal teamA={teamA} teamB={teamB} scoreA={goalA} scoreB={goalB} onConfirm={confirmEnd} onCancel={()=>setShowEndModal(false)}/>}
     {showReport&&<MatchReport events={displayEvents} teamA={teamA} teamB={teamB} scoreA={goalA} scoreB={goalB} clock={displayClock} onClose={()=>setShowReport(false)}/>}
