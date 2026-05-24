@@ -1701,7 +1701,7 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
       </div>
 
       {/* Plan cards */}
-      <div className="r2" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:14,marginBottom:30}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))',gap:14,marginBottom:30}}>
         {planCard('individual', PRICING_DATA.individual)}
         {planCard('team', PRICING_DATA.team)}
         {planCard('club', PRICING_DATA.club)}
