@@ -1,5 +1,5 @@
 import React, { useReducer, useState, useMemo, useEffect, useRef } from 'react';
-import { supabase, isSubscriptionActive, daysRemaining, saveMatchToCloud, loadMatchHistory } from './supabase';
+import { supabase, isSubscriptionActive, daysRemaining, saveMatchToCloud, loadMatchHistory, loadTeams, syncTeamsToCloud } from './supabase';
 
 // ═══════════════════════════════════════════════════════════════
 //  HANDBALL ANALYSIS SYSTEM v6 — Professional Edition
@@ -2028,6 +2028,42 @@ function MainApp({ user, subscription, onLogout }) {
       })
       .finally(()=>setCloudLoading(false));
   },[user]);
+
+  // ─── TEAMS: Load from cloud on user mount ───
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [teamsSyncing, setTeamsSyncing] = useState(false);
+  const teamsSkipNextSync = useRef(false);
+
+  useEffect(()=>{
+    if (!user) return;
+    setTeamsLoading(true);
+    loadTeams(user.id).then(async (cloudTeams)=>{
+      if (cloudTeams.length > 0) {
+        // User has teams in cloud — use those
+        teamsSkipNextSync.current = true;
+        setTeamDB(cloudTeams);
+      } else {
+        // First-time user — seed cloud with current local defaults
+        teamsSkipNextSync.current = true;
+        await syncTeamsToCloud(teamDB, user.id);
+      }
+    }).finally(()=>setTeamsLoading(false));
+  },[user?.id]);
+
+  // ─── TEAMS: Debounced sync to cloud on change ───
+  useEffect(()=>{
+    if (!user || teamsLoading) return;
+    if (teamsSkipNextSync.current) {
+      teamsSkipNextSync.current = false;
+      return;
+    }
+    const timer = setTimeout(async ()=>{
+      setTeamsSyncing(true);
+      await syncTeamsToCloud(teamDB, user.id);
+      setTeamsSyncing(false);
+    }, 1500);
+    return ()=>clearTimeout(timer);
+  },[teamDB, user?.id, teamsLoading]);
   const [activeTeam, setActiveTeam] = useState('A');
   const [selZone, setSelZone] = useState(null);
   const [tab, setTab] = useState('overview');
@@ -2153,6 +2189,13 @@ function MainApp({ user, subscription, onLogout }) {
       {cloudLoading&&<div style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,
         color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em'}}>
         {!mobile&&'LOADING...'}
+      </div>}
+      {teamsSyncing&&!cloudSaving&&<div style={{display:'flex',alignItems:'center',gap:4,
+        background:'rgba(168,85,247,0.1)',border:'1px solid rgba(168,85,247,0.25)',
+        borderRadius:6,padding:'3px 8px'}}>
+        <span className="pulse" style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#A855F7'}}/>
+        <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,
+          color:'#C084FC',letterSpacing:'0.1em'}}>{mobile?'⚙':'TEAMS'}</span>
       </div>}
     </div>
 

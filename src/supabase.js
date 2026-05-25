@@ -143,3 +143,103 @@ export async function loadMatchHistory(userId) {
     return [];
   }
 }
+
+// ─── Load user's teams + players from Supabase ─────────────────
+export async function loadTeams(userId) {
+  try {
+    const { data: teams, error: tErr } = await supabase
+      .from('teams')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at');
+    
+    if (tErr) throw tErr;
+    if (!teams || teams.length === 0) return [];
+
+    const teamIds = teams.map(t => t.id);
+    const { data: players, error: pErr } = await supabase
+      .from('players')
+      .select('*')
+      .in('team_id', teamIds);
+    
+    if (pErr) throw pErr;
+
+    const playersByTeam = {};
+    (players || []).forEach(p => {
+      if (!playersByTeam[p.team_id]) playersByTeam[p.team_id] = [];
+      playersByTeam[p.team_id].push({
+        id: p.id,
+        no: String(p.jersey_no),
+        name: p.name,
+      });
+    });
+
+    return teams.map(t => ({
+      id:      t.id,
+      name:    t.name,
+      color:   t.color,
+      players: (playersByTeam[t.id] || []).sort((a, b) => parseInt(a.no) - parseInt(b.no)),
+    }));
+  } catch (err) {
+    console.error('loadTeams error:', err);
+    return [];
+  }
+}
+
+// ─── Sync local teams (full replace) to Supabase ───────────────
+export async function syncTeamsToCloud(teamDB, userId) {
+  try {
+    // Get existing team IDs in cloud
+    const { data: existing } = await supabase
+      .from('teams')
+      .select('id')
+      .eq('user_id', userId);
+    
+    const existingIds = new Set((existing || []).map(t => t.id));
+    const currentIds = new Set(teamDB.map(t => t.id));
+
+    // Delete teams that no longer exist locally
+    for (const id of existingIds) {
+      if (!currentIds.has(id)) {
+        await supabase.from('teams').delete().eq('id', id);
+      }
+    }
+
+    // Upsert each team + players
+    for (const team of teamDB) {
+      const { error: tErr } = await supabase
+        .from('teams')
+        .upsert({
+          id:         team.id,
+          user_id:    userId,
+          name:       team.name,
+          color:      team.color,
+          updated_at: new Date().toISOString(),
+        });
+      
+      if (tErr) {
+        console.error(`Team ${team.id} upsert error:`, tErr);
+        continue;
+      }
+
+      // Replace players (delete + insert)
+      await supabase.from('players').delete().eq('team_id', team.id);
+      
+      if (team.players.length > 0) {
+        const rows = team.players.map(p => ({
+          id:        p.id,
+          team_id:   team.id,
+          jersey_no: parseInt(p.no) || 0,
+          name:      p.name,
+        }));
+        const { error: pErr } = await supabase.from('players').insert(rows);
+        if (pErr) console.error('Players insert error:', pErr);
+      }
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('syncTeamsToCloud error:', err);
+    return { success: false, error: err.message };
+  }
+}
