@@ -243,3 +243,161 @@ export async function syncTeamsToCloud(teamDB, userId) {
     return { success: false, error: err.message };
   }
 }
+
+// ─── DEVICE SESSION MANAGEMENT ─────────────────────────────────
+
+// Get or create device token (UUID stored in localStorage)
+export function getDeviceToken() {
+  let token = localStorage.getItem('handball_device_token');
+  if (!token) {
+    token = 'dev_' + (crypto.randomUUID ? crypto.randomUUID() :
+      Date.now().toString(36) + Math.random().toString(36).substring(2));
+    localStorage.setItem('handball_device_token', token);
+  }
+  return token;
+}
+
+// Get human-readable device label from user agent
+export function getDeviceLabel() {
+  const ua = navigator.userAgent || '';
+  let browser = 'Browser';
+  if (ua.includes('Edg/')) browser = 'Edge';
+  else if (ua.includes('OPR/') || ua.includes('Opera')) browser = 'Opera';
+  else if (ua.includes('Chrome/') && !ua.includes('Edg')) browser = 'Chrome';
+  else if (ua.includes('Firefox/')) browser = 'Firefox';
+  else if (ua.includes('Safari/')) browser = 'Safari';
+
+  let os = 'Device';
+  if (ua.includes('Windows NT')) os = 'Windows';
+  else if (ua.includes('Mac OS X')) os = 'Mac';
+  else if (ua.includes('iPhone')) os = 'iPhone';
+  else if (ua.includes('iPad')) os = 'iPad';
+  else if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('Linux')) os = 'Linux';
+
+  return `${browser} on ${os}`;
+}
+
+// Determine device limit based on plan + status
+export function getDeviceLimit(subscription) {
+  if (!subscription) return 1;
+  if (subscription.status === 'trial') return 10; // Generous for testing
+  switch (subscription.plan) {
+    case 'individual': return 1;
+    case 'team':       return 3;
+    case 'club':       return 6;
+    default:           return 1;
+  }
+}
+
+// Register this device for the user (called on login)
+export async function registerDevice(userId, subscription) {
+  try {
+    const token = getDeviceToken();
+    const label = getDeviceLabel();
+
+    // Already registered? Just update last_seen
+    const { data: existing } = await supabase
+      .from('device_sessions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('device_token', token)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase.from('device_sessions')
+        .update({ last_seen_at: new Date().toISOString(), device_label: label })
+        .eq('id', existing.id);
+      return { success: true, kicked: 0 };
+    }
+
+    // New device — check limit, kick oldest if needed
+    const limit = getDeviceLimit(subscription);
+    const { data: devices } = await supabase
+      .from('device_sessions')
+      .select('id, device_label, last_seen_at')
+      .eq('user_id', userId)
+      .order('last_seen_at', { ascending: true });
+
+    let kicked = 0;
+    if (devices && devices.length >= limit) {
+      const toRemove = devices.slice(0, devices.length - limit + 1);
+      for (const d of toRemove) {
+        await supabase.from('device_sessions').delete().eq('id', d.id);
+        kicked++;
+      }
+    }
+
+    // Insert this device
+    await supabase.from('device_sessions').insert({
+      user_id: userId,
+      device_token: token,
+      device_label: label,
+    });
+
+    return { success: true, kicked };
+  } catch (err) {
+    console.error('registerDevice error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// Heartbeat — returns true if THIS device still has a valid session
+export async function heartbeatDevice(userId) {
+  try {
+    const token = getDeviceToken();
+    const { data, error } = await supabase
+      .from('device_sessions')
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('device_token', token)
+      .select();
+
+    if (error) {
+      console.error('heartbeat error:', error);
+      return true; // Network error — assume still valid, don't logout
+    }
+    return data && data.length > 0;
+  } catch (err) {
+    console.error('heartbeat catch:', err);
+    return true; // Network error — assume still valid
+  }
+}
+
+// Get all active devices for current user
+export async function getActiveDevices(userId) {
+  try {
+    const { data } = await supabase
+      .from('device_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('last_seen_at', { ascending: false });
+    return data || [];
+  } catch (err) {
+    console.error('getActiveDevices error:', err);
+    return [];
+  }
+}
+
+// Logout a specific device (delete its session)
+export async function logoutDevice(deviceId) {
+  try {
+    const { error } = await supabase.from('device_sessions').delete().eq('id', deviceId);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+// Clean up THIS device's session on logout
+export async function cleanupCurrentDevice(userId) {
+  try {
+    const token = getDeviceToken();
+    await supabase.from('device_sessions')
+      .delete()
+      .eq('user_id', userId)
+      .eq('device_token', token);
+  } catch (err) {
+    console.error('cleanupCurrentDevice error:', err);
+  }
+}

@@ -1,5 +1,5 @@
 import React, { useReducer, useState, useMemo, useEffect, useRef } from 'react';
-import { supabase, isSubscriptionActive, daysRemaining, saveMatchToCloud, loadMatchHistory, loadTeams, syncTeamsToCloud } from './supabase';
+import { supabase, isSubscriptionActive, daysRemaining, saveMatchToCloud, loadMatchHistory, loadTeams, syncTeamsToCloud, registerDevice, heartbeatDevice, getActiveDevices, logoutDevice, cleanupCurrentDevice, getDeviceToken, getDeviceLimit } from './supabase';
 
 // ═══════════════════════════════════════════════════════════════
 //  HANDBALL ANALYSIS SYSTEM v6 — Professional Edition
@@ -1563,6 +1563,102 @@ function TutorialTab() {
   </div>;
 }
 
+function ActiveDevicesSection({user, subscription, lang}) {
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const currentToken = getDeviceToken();
+  const limit = getDeviceLimit(subscription);
+
+  const loadDevices = async ()=>{
+    setLoading(true);
+    const list = await getActiveDevices(user.id);
+    setDevices(list);
+    setLoading(false);
+  };
+
+  useEffect(()=>{ loadDevices(); },[user?.id]);
+
+  const handleLogoutDevice = async (deviceId, isCurrent)=>{
+    if (!window.confirm(isCurrent
+      ? (lang==='BM'?'Logout dari device ini?':'Logout from this device?')
+      : (lang==='BM'?'Logout device ini?':'Logout this device?'))) return;
+    await logoutDevice(deviceId);
+    if (isCurrent) {
+      await supabase.auth.signOut();
+    } else {
+      loadDevices();
+    }
+  };
+
+  const formatTime = (iso)=>{
+    if (!iso) return '-';
+    const d = new Date(iso);
+    const diff = Date.now() - d.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return lang==='BM'?'Baru sekejap':'Just now';
+    if (mins < 60) return `${mins} ${lang==='BM'?'minit lalu':'min ago'}`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} ${lang==='BM'?'jam lalu':'h ago'}`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days} ${lang==='BM'?'hari lalu':'days ago'}`;
+    return d.toLocaleDateString();
+  };
+
+  return (
+    <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',
+      borderRadius:12,padding:'12px 14px',marginBottom:20}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:6}}>
+        <div>
+          <div style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:'0.18em'}}>📱 {lang==='BM'?'DEVICE AKTIF':'ACTIVE DEVICES'}</div>
+          <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>
+            {devices.length}/{limit} {lang==='BM'?'device dibenarkan':'devices allowed'}
+          </div>
+        </div>
+        <button onClick={loadDevices}
+          style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:6,
+            padding:'4px 10px',fontFamily:'Barlow Condensed',fontWeight:700,fontSize:10,
+            color:'rgba(255,255,255,0.5)',letterSpacing:'0.1em',cursor:'pointer'}}>
+          ↻ {lang==='BM'?'REFRESH':'REFRESH'}
+        </button>
+      </div>
+
+      {loading
+        ? <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.3)',textAlign:'center',padding:'10px'}}>{lang==='BM'?'Memuatkan...':'Loading...'}</div>
+        : devices.length===0
+          ? <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.3)',textAlign:'center',padding:'10px'}}>{lang==='BM'?'Tiada device lain':'No other devices'}</div>
+          : <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {devices.map(d=>{
+                const isCurrent = d.device_token === currentToken;
+                return <div key={d.id} style={{display:'flex',alignItems:'center',gap:10,
+                  background:isCurrent?'rgba(52,211,153,0.05)':'rgba(255,255,255,0.02)',
+                  border:`1px solid ${isCurrent?'rgba(52,211,153,0.2)':'rgba(255,255,255,0.05)'}`,
+                  borderRadius:8,padding:'8px 10px',flexWrap:'wrap'}}>
+                  <div style={{fontSize:16,width:24,textAlign:'center'}}>
+                    {d.device_label?.includes('iPhone')||d.device_label?.includes('Android')?'📱':'💻'}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                      <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'white'}}>{d.device_label||'Unknown'}</span>
+                      {isCurrent&&<span style={{background:'rgba(52,211,153,0.15)',color:'#34D399',padding:'1px 6px',borderRadius:4,fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,letterSpacing:'0.1em'}}>{lang==='BM'?'INI':'THIS'}</span>}
+                    </div>
+                    <div style={{fontFamily:'Barlow',fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:1}}>
+                      {lang==='BM'?'Aktif':'Active'}: {formatTime(d.last_seen_at)}
+                    </div>
+                  </div>
+                  <button onClick={()=>handleLogoutDevice(d.id, isCurrent)}
+                    style={{background:'rgba(220,38,38,0.1)',border:'1px solid rgba(220,38,38,0.2)',borderRadius:6,
+                      padding:'5px 10px',fontFamily:'Barlow Condensed',fontWeight:700,fontSize:10,
+                      color:'rgba(252,129,129,0.8)',letterSpacing:'0.1em',cursor:'pointer'}}>
+                    {lang==='BM'?'LOGOUT':'LOGOUT'}
+                  </button>
+                </div>;
+              })}
+            </div>
+      }
+    </div>
+  );
+}
+
 function PricingTab({onSelectPlan, user, subscription, onLogout}) {
   const [lang, setLang] = useState('BM');
   const [period, setPeriod] = useState('p12'); // 'p1' | 'p6' | 'p12'
@@ -1669,6 +1765,9 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
           LOG OUT
         </button>}
       </div>}
+
+      {/* Active Devices section */}
+      {user&&<ActiveDevicesSection user={user} subscription={subscription} lang={lang}/>}
 
       {/* Header with language toggle */}
       <div style={{textAlign:'center',marginBottom:20,position:'relative'}}>
@@ -2682,7 +2781,10 @@ export default function HandballApp() {
       
       if (error && error.code !== 'PGRST116') console.error('Sub load error:', error);
       setSubscription(sub);
-      setAuthState(isSubscriptionActive(sub) ? 'ok' : 'expired');
+      const active = isSubscriptionActive(sub);
+      setAuthState(active ? 'ok' : 'expired');
+      // Register this device (only if subscription is active)
+      if (active) registerDevice(session.user.id, sub);
     } catch(err) {
       console.error('Auth check failed:', err);
       setAuthState('unauth');
@@ -2716,7 +2818,44 @@ export default function HandballApp() {
     return ()=>listener?.unsubscribe();
   },[]);
 
+  // ─── Heartbeat: keep last_seen_at fresh + fallback kick detection ───
+  useEffect(()=>{
+    if (authState !== 'ok' || !user) return;
+    const checkValid = async ()=>{
+      const valid = await heartbeatDevice(user.id);
+      if (!valid) {
+        alert('⚠️ Akaun anda telah login di device lain.\n\nSila login semula.');
+        await supabase.auth.signOut();
+      }
+    };
+    const interval = setInterval(checkValid, 30000); // every 30 seconds (fallback)
+    return ()=>clearInterval(interval);
+  },[authState, user?.id]);
+
+  // ─── INSTANT kick detection via Supabase Realtime ───
+  useEffect(()=>{
+    if (authState !== 'ok' || !user) return;
+    const currentToken = getDeviceToken();
+    const channel = supabase
+      .channel('device-kick-'+user.id)
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'device_sessions',
+        filter: `user_id=eq.${user.id}`,
+      }, (payload)=>{
+        // Our session was deleted → instant kick
+        if (payload.old?.device_token === currentToken) {
+          alert('⚠️ Akaun anda baru saja login di device lain.\n\nSila login semula.');
+          supabase.auth.signOut().then(()=>setAuthState('unauth'));
+        }
+      })
+      .subscribe();
+    return ()=>{ supabase.removeChannel(channel); };
+  },[authState, user?.id]);
+
   const handleLogout = async ()=>{
+    if (user) await cleanupCurrentDevice(user.id);
     await supabase.auth.signOut();
     setAuthState('unauth');
   };
