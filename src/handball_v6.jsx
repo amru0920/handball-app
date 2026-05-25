@@ -1722,14 +1722,42 @@ function PricingTab({onSelectPlan, user, subscription, onLogout}) {
           })}
         </div>
 
-        <button className="btn" onClick={()=>onSelectPlan&&onSelectPlan({plan:key, period, price})}
-          style={{background:plan.popular?plan.color:'rgba(255,255,255,0.07)',
-            border:plan.popular?'none':`1px solid ${plan.color}80`,
-            borderRadius:10,padding:'11px',fontFamily:'Barlow Condensed',fontWeight:900,
-            fontSize:13,color:'white',letterSpacing:'0.1em',marginTop:'auto',
-            boxShadow:plan.popular?`0 4px 16px ${plan.color}40`:'none'}}>
-          {t.startTrial.toUpperCase()}
-        </button>
+        {/* Context-aware button based on subscription status */}
+        {(() => {
+          const status = subscription?.status;
+          const userPlan = subscription?.plan;
+          const inTrial = status === 'trial';
+          const isMyPlan = status === 'active' && userPlan === key;
+          
+          let btnText, btnDisabled = false, btnAction = ()=>onSelectPlan&&onSelectPlan({plan:key, period, price});
+          let btnBg = plan.popular?plan.color:'rgba(255,255,255,0.07)';
+          
+          if (!user) {
+            btnText = t.startTrial.toUpperCase();
+          } else if (isMyPlan) {
+            btnText = (lang==='BM'?'✓ Plan Anda Sekarang':'✓ Your Current Plan').toUpperCase();
+            btnDisabled = true;
+            btnBg = 'rgba(52,211,153,0.15)';
+          } else if (inTrial) {
+            const days = subscription?.trial_ends_at ? Math.max(0, Math.ceil((new Date(subscription.trial_ends_at).getTime() - Date.now())/86400000)) : 0;
+            btnText = (lang==='BM'?`SEDANG TRIAL (${days} HARI LAGI)`:`TRIAL ACTIVE (${days} DAYS LEFT)`);
+            btnBg = 'rgba(168,85,247,0.15)';
+            btnDisabled = false;
+            // still allow upgrade to plan during trial (will be paid plan after)
+          } else {
+            btnText = t.selectPlan.toUpperCase();
+          }
+          
+          return <button className="btn" disabled={btnDisabled} onClick={btnDisabled?undefined:btnAction}
+            style={{background:btnBg,
+              border:plan.popular&&!btnDisabled?'none':`1px solid ${plan.color}80`,
+              borderRadius:10,padding:'11px',fontFamily:'Barlow Condensed',fontWeight:900,
+              fontSize:13,color:'white',letterSpacing:'0.1em',marginTop:'auto',
+              boxShadow:plan.popular&&!btnDisabled?`0 4px 16px ${plan.color}40`:'none',
+              cursor:btnDisabled?'default':'pointer',opacity:btnDisabled?0.85:1}}>
+            {btnText}
+          </button>;
+        })()}
       </div>
     );
   };
@@ -2356,16 +2384,16 @@ function MainApp({ user, subscription, onLogout }) {
               border:`1px solid ${wave===w.id?(w.id==='ALL'?'rgba(255,255,255,0.25)':w.color):'rgba(255,255,255,0.07)'}`,
               opacity:wave===w.id?1:0.6}}>{w.label}</button>)}
         </div>}
-        {/* Team toggle */}
-        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'0.15em'}}>RECORDING:</span>
+        {/* Team toggle (for action buttons context — shots use dual court below) */}
+        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+          <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:8,color:'rgba(255,255,255,0.25)',letterSpacing:'0.15em'}}>ACTIONS BY:</span>
           {['A','B'].map(side=>{const t=side==='A'?teamA:teamB;return<button key={side} className="btn"
             onClick={()=>{setActiveTeam(side);setSelZone(null);}}
-            style={{background:activeTeam===side?t.color:'rgba(255,255,255,0.06)',
-              border:`1px solid ${activeTeam===side?t.color:'rgba(255,255,255,0.08)'}`,
-              borderRadius:8,padding:'5px 12px',display:'flex',alignItems:'center',gap:5}}>
-            <Badge team={t} size={14}/>
-            <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:12,color:'white'}}>{t.name.toUpperCase()}</span>
+            style={{background:activeTeam===side?t.color:'rgba(255,255,255,0.04)',
+              border:`1px solid ${activeTeam===side?t.color:'rgba(255,255,255,0.07)'}`,
+              borderRadius:6,padding:'3px 8px',display:'flex',alignItems:'center',gap:4}}>
+            <Badge team={t} size={11}/>
+            <span style={{fontFamily:'Barlow Condensed',fontWeight:800,fontSize:10,color:'white'}}>{t.name.toUpperCase()}</span>
           </button>;})}
           <div style={{flex:1}}/>
           <button className="btn" onClick={()=>dispatch({type:'UNDO'})}
@@ -2381,10 +2409,27 @@ function MainApp({ user, subscription, onLogout }) {
           </div>
           <Clock clock={clock} mobile={mobile}/>
         </div>
-        {/* Court */}
-        <div style={{maxWidth:580,width:'100%',alignSelf:'center'}}>
-          <CourtSVG events={displayEvents} teamA={teamA} teamB={teamB} activeTeam={activeTeam}
-            onZoneClick={isViewing?()=>{}:setSelZone} selZone={selZone} wave={wave} mobile={mobile}/>
+        {/* Court — DUAL VIEW (both teams visible simultaneously) */}
+        <div style={{display:'grid',gridTemplateColumns:mobile?'1fr':'1fr 1fr',gap:mobile?14:10,width:'100%'}}>
+          {[{side:'A',team:teamA},{side:'B',team:teamB}].map(({side,team})=>{
+            const isActiveSide = activeTeam===side;
+            return <div key={side} style={{display:'flex',flexDirection:'column',gap:6}}>
+              {/* Team header above each court */}
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',
+                background:`${team.color}${isActiveSide?'25':'10'}`,
+                border:`1px solid ${team.color}${isActiveSide?'70':'30'}`,
+                borderRadius:8,justifyContent:'center',transition:'all 0.15s'}}>
+                <Badge team={team} size={14}/>
+                <span style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:12,color:team.color,letterSpacing:'0.1em'}}>
+                  {team.name.toUpperCase()}
+                </span>
+                {isActiveSide&&<span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:9,color:team.color,letterSpacing:'0.15em',opacity:0.7}}>● ACTIVE</span>}
+              </div>
+              <CourtSVG events={displayEvents} teamA={teamA} teamB={teamB} activeTeam={side}
+                onZoneClick={isViewing?()=>{}:(z)=>{setActiveTeam(side);setSelZone(z);}}
+                selZone={isActiveSide?selZone:null} wave={wave} mobile={mobile}/>
+            </div>;
+          })}
         </div>
         {/* Quick action buttons — Cara A (context-aware auto-assign) */}
         {(()=>{
@@ -2475,7 +2520,7 @@ function LoadingScreen({msg='Loading...'}) {
   );
 }
 
-function AuthScreen({onSuccess}) {
+function AuthScreen({onSuccess, onBack}) {
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2536,8 +2581,9 @@ function AuthScreen({onSuccess}) {
   };
 
   return (
-    <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'Barlow,sans-serif'}}>
+    <div style={{background:'#0A1020',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'Barlow,sans-serif',position:'relative'}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap');`}</style>
+      {onBack&&<button onClick={onBack} style={{position:'absolute',top:20,left:20,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,padding:'8px 14px',color:'rgba(255,255,255,0.7)',fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,letterSpacing:'0.1em',cursor:'pointer'}}>← BACK</button>}
       <div style={{background:'linear-gradient(180deg, rgba(255,61,189,0.05), transparent)',width:'100%',maxWidth:420,borderRadius:18,padding:'30px 28px',border:'1px solid rgba(255,255,255,0.08)',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
         {/* Logo / Title */}
         <div style={{textAlign:'center',marginBottom:24}}>
@@ -2761,11 +2807,309 @@ function PasswordResetScreen({onComplete}) {
   );
 }
 
+// ═══ LANDING PAGE (Public Marketing Site) ════════════════════
+function LandingPage({onGetStarted, onLogin}) {
+  const [lang, setLang] = useState('BM');
+  const [openFaq, setOpenFaq] = useState(null);
+  const mobile = useIsMobile();
+
+  const TXT = {
+    BM:{
+      nav:{features:'Features', howit:'Cara Guna', pricing:'Harga', faq:'FAQ', login:'Log Masuk'},
+      hero:{
+        eyebrow:'🏆 ANALISIS HANDBALL MALAYSIA',
+        title1:'Analisis Match',
+        title2:'Macam Pro',
+        sub:'Track shots, assists, fouls. Auto-generate match reports. Live statistics untuk coach Malaysia.',
+        cta:'Mulakan Free Trial',
+        ctaSub:'30 hari percuma · Tanpa kad kredit · Setup 2 minit',
+      },
+      features:{
+        title:'SEMUA YANG COACH PERLU',
+        subtitle:'Tools handball analytics yang real, bukan sekadar tracking shot.',
+        list:[
+          {ic:'🎯',t:'Court Tracking',d:'10 zon court dengan WAVE system (1st/2nd/3rd) untuk classify counter-attack vs set play.'},
+          {ic:'⚽',t:'Shot Analysis',d:'Track GOAL, SAVE, MISS per pemain. Auto-calculate shooting efficiency.'},
+          {ic:'📊',t:'Live Statistics',d:'Stats update real-time bila record event. Pemain breakdown, team comparison, foul tracking.'},
+          {ic:'☁️',t:'Cloud Sync',d:'Match data auto-save ke cloud. Akses dari phone, tablet, laptop — semua sync.'},
+          {ic:'📄',t:'PDF Reports',d:'Auto-generate match report yang professional untuk print, share, atau archive.'},
+          {ic:'🇲🇾',t:'Made in Malaysia',d:'Bahasa Malaysia native. Design untuk handball Malaysia. Support tempatan.'},
+        ],
+      },
+      how:{
+        title:'CARA DIA BERFUNGSI',
+        subtitle:'Dari setup ke insights dalam 3 langkah.',
+        steps:[
+          {n:'01',t:'Setup Team',d:'Tambah pemain dengan jersey number dan nama. Setup home & away.'},
+          {n:'02',t:'Record Match',d:'Tap zone kat court, capture setiap shot, save, foul. Real-time tracking.'},
+          {n:'03',t:'Get Insights',d:'Lihat statistics live atau generate PDF report untuk briefing.'},
+        ],
+      },
+      pricing:{
+        title:'HARGA YANG BERPATUTAN',
+        subtitle:'Trial 30 hari percuma. Tanpa kad kredit.',
+        cta:'Lihat Semua Plan',
+      },
+      faq:{
+        title:'SOALAN LAZIM',
+        items:[
+          {q:'Adakah trial percuma sebenarnya?',a:'Ya, 30 hari penuh percuma. Tak perlu masukkan kad kredit. Tiada caj tersembunyi. Selepas 30 hari, awak pilih untuk subscribe atau tidak.'},
+          {q:'Berapa device boleh login serentak?',a:'Solo: 1 device. Team: 3 devices. Club: 6 devices. Kalau login dari device baru lebih limit, device paling lama akan auto-logout.'},
+          {q:'Macam mana data saya selamat?',a:'Semua data encrypted, disimpan di Supabase (powered by AWS). Hanya awak boleh akses match data sendiri. Backup automatik setiap hari.'},
+          {q:'Boleh print match report?',a:'Ya. Setiap match boleh generate PDF report yang professional — termasuk statistics, shot chart, pemain breakdown. Sesuai untuk briefing atau archive.'},
+          {q:'Kalau saya cancel, data hilang?',a:'Tidak. Selepas cancel subscription, awak masih boleh access dan export semua data lama. Data hanya delete kalau awak request manual.'},
+        ],
+      },
+      finalCta:{
+        title:'Sedia mula analisis handball?',
+        sub:'Join coaches Malaysia yang dah upgrade dari pen & paper ke digital tracking.',
+        btn:'Mulakan Free Trial 30 Hari',
+      },
+      footer:{
+        tag:'Built with ❤️ in Malaysia',
+        copy:'© 2026 Handball Analysis. All rights reserved.',
+      },
+    },
+    EN:{
+      nav:{features:'Features', howit:'How It Works', pricing:'Pricing', faq:'FAQ', login:'Log In'},
+      hero:{
+        eyebrow:'🏆 MALAYSIAN HANDBALL ANALYTICS',
+        title1:'Pro-Level',
+        title2:'Match Analysis',
+        sub:'Track shots, assists, fouls. Auto-generate match reports. Live statistics for handball coaches.',
+        cta:'Start Free Trial',
+        ctaSub:'30 days free · No credit card · 2-min setup',
+      },
+      features:{
+        title:'EVERYTHING COACHES NEED',
+        subtitle:'Real handball analytics tools, not just shot tracking.',
+        list:[
+          {ic:'🎯',t:'Court Tracking',d:'10 court zones with WAVE system (1st/2nd/3rd) to classify counter-attack vs set play.'},
+          {ic:'⚽',t:'Shot Analysis',d:'Track GOAL, SAVE, MISS per player. Auto-calculate shooting efficiency.'},
+          {ic:'📊',t:'Live Statistics',d:'Stats update in real-time as you record. Player breakdown, team comparison, foul tracking.'},
+          {ic:'☁️',t:'Cloud Sync',d:'Match data auto-saves to cloud. Access from phone, tablet, laptop — all in sync.'},
+          {ic:'📄',t:'PDF Reports',d:'Auto-generate professional match reports for printing, sharing, or archiving.'},
+          {ic:'🇲🇾',t:'Made in Malaysia',d:'Bahasa Malaysia native. Designed for Malaysian handball. Local support.'},
+        ],
+      },
+      how:{
+        title:'HOW IT WORKS',
+        subtitle:'From setup to insights in 3 steps.',
+        steps:[
+          {n:'01',t:'Setup Team',d:'Add players with jersey numbers and names. Set up home & away teams.'},
+          {n:'02',t:'Record Match',d:'Tap court zones, capture every shot, save, foul. Real-time tracking.'},
+          {n:'03',t:'Get Insights',d:'View live statistics or generate PDF reports for briefings.'},
+        ],
+      },
+      pricing:{
+        title:'AFFORDABLE PRICING',
+        subtitle:'30-day free trial. No credit card required.',
+        cta:'See All Plans',
+      },
+      faq:{
+        title:'FREQUENTLY ASKED',
+        items:[
+          {q:'Is the trial really free?',a:'Yes, full 30 days free. No credit card required. No hidden charges. After 30 days, you choose whether to subscribe.'},
+          {q:'How many devices can I use?',a:'Solo: 1 device. Team: 3 devices. Club: 6 devices. If you log in from a new device beyond your limit, the oldest device auto-logs out.'},
+          {q:'How is my data secured?',a:'All data is encrypted, stored on Supabase (powered by AWS). Only you can access your match data. Automatic daily backups.'},
+          {q:'Can I print match reports?',a:'Yes. Every match can generate a professional PDF report — including statistics, shot chart, player breakdown. Perfect for briefings or archives.'},
+          {q:'If I cancel, do I lose my data?',a:'No. After canceling, you can still access and export all old data. Data is only deleted if you request manual deletion.'},
+        ],
+      },
+      finalCta:{
+        title:'Ready to start handball analysis?',
+        sub:'Join Malaysian coaches upgrading from pen & paper to digital tracking.',
+        btn:'Start 30-Day Free Trial',
+      },
+      footer:{
+        tag:'Built with ❤️ in Malaysia',
+        copy:'© 2026 Handball Analysis. All rights reserved.',
+      },
+    },
+  };
+  const t = TXT[lang];
+
+  const sectionStyle = {padding:mobile?'40px 16px':'60px 24px', maxWidth:1100, margin:'0 auto'};
+  const titleStyle = {fontFamily:'Barlow Condensed',fontWeight:900,fontSize:mobile?22:30,color:'white',letterSpacing:'0.05em',textAlign:'center',marginBottom:8};
+  const subtitleStyle = {fontFamily:'Barlow',fontSize:14,color:'rgba(255,255,255,0.5)',textAlign:'center',marginBottom:mobile?28:40};
+
+  return (
+    <div style={{background:'#0A1020',minHeight:'100vh',width:'100vw',maxWidth:'100%',overflowX:'hidden',fontFamily:'Barlow,sans-serif',color:'white'}}>
+      {/* ─── NAV ─── */}
+      <nav style={{position:'sticky',top:0,zIndex:10,background:'rgba(10,16,32,0.85)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',padding:mobile?'12px 16px':'14px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{width:32,height:32,borderRadius:8,background:'linear-gradient(135deg, #FF3DBD, #A855F7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🤾</div>
+            <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:16,letterSpacing:'0.05em'}}>HANDBALL<span style={{color:'#FF3DBD'}}>.MY</span></div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:mobile?6:18}}>
+            {!mobile&&<>
+              <a href="#features" style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'rgba(255,255,255,0.6)',textDecoration:'none',letterSpacing:'0.1em'}}>{t.nav.features.toUpperCase()}</a>
+              <a href="#howit" style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'rgba(255,255,255,0.6)',textDecoration:'none',letterSpacing:'0.1em'}}>{t.nav.howit.toUpperCase()}</a>
+              <a href="#pricing" style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'rgba(255,255,255,0.6)',textDecoration:'none',letterSpacing:'0.1em'}}>{t.nav.pricing.toUpperCase()}</a>
+              <a href="#faq" style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'rgba(255,255,255,0.6)',textDecoration:'none',letterSpacing:'0.1em'}}>{t.nav.faq.toUpperCase()}</a>
+            </>}
+            <div style={{display:'flex',background:'rgba(255,255,255,0.05)',padding:2,borderRadius:6}}>
+              {['BM','EN'].map(l=><button key={l} onClick={()=>setLang(l)}
+                style={{padding:'4px 8px',borderRadius:4,border:'none',background:lang===l?'#FF3DBD':'transparent',color:'white',fontFamily:'Barlow Condensed',fontWeight:700,fontSize:10,letterSpacing:'0.1em',cursor:'pointer'}}>{l}</button>)}
+            </div>
+            <button onClick={onLogin} style={{background:'transparent',border:'1px solid rgba(255,255,255,0.15)',borderRadius:6,padding:'6px 14px',fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'white',letterSpacing:'0.1em',cursor:'pointer'}}>
+              {t.nav.login.toUpperCase()}
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* ─── HERO ─── */}
+      <section style={{...sectionStyle,paddingTop:mobile?40:80,paddingBottom:mobile?40:80,textAlign:'center'}}>
+        <div style={{display:'inline-block',background:'rgba(255,61,189,0.1)',border:'1px solid rgba(255,61,189,0.25)',borderRadius:20,padding:'5px 14px',fontFamily:'Barlow Condensed',fontWeight:800,fontSize:11,color:'#FF93D7',letterSpacing:'0.18em',marginBottom:20}}>
+          {t.hero.eyebrow}
+        </div>
+        <h1 style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:mobile?42:72,lineHeight:0.95,letterSpacing:'-0.02em',margin:0,marginBottom:16}}>
+          {t.hero.title1}<br/>
+          <span style={{background:'linear-gradient(135deg, #FF3DBD, #A855F7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>{t.hero.title2}</span>
+        </h1>
+        <p style={{fontFamily:'Barlow',fontSize:mobile?15:18,color:'rgba(255,255,255,0.6)',maxWidth:600,margin:'0 auto 28px',lineHeight:1.5}}>
+          {t.hero.sub}
+        </p>
+        <button onClick={onGetStarted} style={{background:'linear-gradient(135deg, #FF3DBD, #A855F7)',border:'none',borderRadius:10,padding:'14px 32px',fontFamily:'Barlow Condensed',fontWeight:900,fontSize:14,color:'white',letterSpacing:'0.12em',cursor:'pointer',boxShadow:'0 8px 32px rgba(255,61,189,0.3)'}}>
+          🚀 {t.hero.cta.toUpperCase()} →
+        </button>
+        <div style={{fontFamily:'Barlow',fontSize:12,color:'rgba(255,255,255,0.4)',marginTop:14}}>
+          {t.hero.ctaSub}
+        </div>
+
+        {/* Visual mockup */}
+        <div style={{marginTop:48,padding:mobile?'14px':'24px',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.05)',borderRadius:16,maxWidth:700,margin:`${mobile?32:48}px auto 0`}}>
+          <svg viewBox="0 0 700 320" style={{width:'100%',height:'auto',display:'block'}}>
+            <rect width="700" height="320" fill="#101830" rx="12"/>
+            {/* Court outline */}
+            <rect x="60" y="60" width="580" height="200" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="2" rx="100"/>
+            <line x1="350" y1="60" x2="350" y2="260" stroke="rgba(255,255,255,0.15)" strokeWidth="2"/>
+            {/* Zones with sample data */}
+            <g>
+              <circle cx="120" cy="160" r="28" fill="rgba(52,211,153,0.2)" stroke="#34D399" strokeWidth="2"/>
+              <text x="120" y="158" textAnchor="middle" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="14">8/12</text>
+              <text x="120" y="172" textAnchor="middle" fill="#34D399" fontFamily="Barlow Condensed" fontWeight="800" fontSize="9">67%</text>
+              <circle cx="220" cy="120" r="22" fill="rgba(245,158,11,0.2)" stroke="#F59E0B" strokeWidth="2"/>
+              <text x="220" y="125" textAnchor="middle" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="11">3/8</text>
+              <circle cx="220" cy="200" r="22" fill="rgba(220,38,38,0.2)" stroke="#DC2626" strokeWidth="2"/>
+              <text x="220" y="205" textAnchor="middle" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="11">2/9</text>
+              <circle cx="480" cy="120" r="22" fill="rgba(245,158,11,0.2)" stroke="#F59E0B" strokeWidth="2"/>
+              <text x="480" y="125" textAnchor="middle" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="11">4/7</text>
+              <circle cx="480" cy="200" r="22" fill="rgba(52,211,153,0.2)" stroke="#34D399" strokeWidth="2"/>
+              <text x="480" y="205" textAnchor="middle" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="11">5/8</text>
+              <circle cx="580" cy="160" r="28" fill="rgba(220,38,38,0.2)" stroke="#DC2626" strokeWidth="2"/>
+              <text x="580" y="158" textAnchor="middle" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="14">2/6</text>
+              <text x="580" y="172" textAnchor="middle" fill="#FCA5A5" fontFamily="Barlow Condensed" fontWeight="800" fontSize="9">33%</text>
+            </g>
+            {/* Header overlay */}
+            <rect x="0" y="0" width="700" height="40" fill="rgba(255,255,255,0.03)"/>
+            <text x="20" y="25" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="14">KEDAH</text>
+            <text x="350" y="25" textAnchor="middle" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="18">25 - 22</text>
+            <text x="680" y="25" textAnchor="end" fill="white" fontFamily="Barlow Condensed" fontWeight="900" fontSize="14">PENANG</text>
+            {/* Bottom stats bar */}
+            <rect x="0" y="280" width="700" height="40" fill="rgba(255,255,255,0.03)"/>
+            <text x="60" y="305" fill="rgba(255,255,255,0.5)" fontFamily="Barlow Condensed" fontWeight="700" fontSize="11" letterSpacing="0.1em">SHOOTING EFFICIENCY 56%</text>
+            <text x="340" y="305" fill="rgba(255,255,255,0.5)" fontFamily="Barlow Condensed" fontWeight="700" fontSize="11" letterSpacing="0.1em">ASSISTS 14</text>
+            <text x="460" y="305" fill="rgba(255,255,255,0.5)" fontFamily="Barlow Condensed" fontWeight="700" fontSize="11" letterSpacing="0.1em">FOULS 8</text>
+            <text x="580" y="305" fill="rgba(255,255,255,0.5)" fontFamily="Barlow Condensed" fontWeight="700" fontSize="11" letterSpacing="0.1em">T.O 5</text>
+          </svg>
+        </div>
+      </section>
+
+      {/* ─── FEATURES ─── */}
+      <section id="features" style={sectionStyle}>
+        <h2 style={titleStyle}>{t.features.title}</h2>
+        <p style={subtitleStyle}>{t.features.subtitle}</p>
+        <div style={{display:'grid',gridTemplateColumns:mobile?'1fr':'repeat(auto-fit, minmax(280px, 1fr))',gap:14}}>
+          {t.features.list.map((f,i)=>
+            <div key={i} style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'20px 18px'}}>
+              <div style={{fontSize:32,marginBottom:10}}>{f.ic}</div>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:16,color:'white',marginBottom:6,letterSpacing:'0.03em'}}>{f.t}</div>
+              <div style={{fontFamily:'Barlow',fontSize:13,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>{f.d}</div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS ─── */}
+      <section id="howit" style={{...sectionStyle,background:'rgba(255,255,255,0.02)'}}>
+        <h2 style={titleStyle}>{t.how.title}</h2>
+        <p style={subtitleStyle}>{t.how.subtitle}</p>
+        <div style={{display:'grid',gridTemplateColumns:mobile?'1fr':'repeat(3, 1fr)',gap:14}}>
+          {t.how.steps.map((s,i)=>
+            <div key={i} style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'24px 20px',position:'relative'}}>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:36,background:'linear-gradient(135deg, #FF3DBD, #A855F7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',lineHeight:1,marginBottom:10,letterSpacing:'-0.02em'}}>{s.n}</div>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:18,color:'white',marginBottom:6,letterSpacing:'0.03em'}}>{s.t}</div>
+              <div style={{fontFamily:'Barlow',fontSize:13,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>{s.d}</div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ─── PRICING TEASER ─── */}
+      <section id="pricing" style={sectionStyle}>
+        <h2 style={titleStyle}>{t.pricing.title}</h2>
+        <p style={subtitleStyle}>{t.pricing.subtitle}</p>
+        <div style={{display:'grid',gridTemplateColumns:mobile?'1fr':'repeat(3, 1fr)',gap:14,marginBottom:24}}>
+          {Object.entries(PRICING_DATA).map(([k,p])=>
+            <div key={k} style={{background:p.popular?`linear-gradient(180deg, ${p.color}10, transparent)`:'rgba(255,255,255,0.03)',border:`1px solid ${p.popular?p.color+'40':'rgba(255,255,255,0.06)'}`,borderRadius:14,padding:'20px 18px',textAlign:'center',position:'relative'}}>
+              {p.popular&&<div style={{position:'absolute',top:-9,left:'50%',transform:'translateX(-50%)',background:p.color,color:'white',fontFamily:'Barlow Condensed',fontWeight:800,fontSize:9,padding:'3px 10px',borderRadius:6,letterSpacing:'0.12em'}}>BEST</div>}
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:18,color:'white',marginBottom:4}}>{p.name[lang]||p.name.BM}</div>
+              <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:14}}>{p.sub[lang]||p.sub.BM}</div>
+              <div style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:34,color:'white',lineHeight:1}}>RM{p.p12}</div>
+              <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:14}}>/{lang==='BM'?'tahun':'year'}</div>
+            </div>
+          )}
+        </div>
+        <div style={{textAlign:'center'}}>
+          <button onClick={onGetStarted} style={{background:'rgba(255,61,189,0.15)',border:'1px solid rgba(255,61,189,0.3)',borderRadius:10,padding:'11px 28px',fontFamily:'Barlow Condensed',fontWeight:900,fontSize:13,color:'#FF93D7',letterSpacing:'0.1em',cursor:'pointer'}}>
+            {t.pricing.cta.toUpperCase()} →
+          </button>
+        </div>
+      </section>
+
+      {/* ─── FAQ ─── */}
+      <section id="faq" style={{...sectionStyle,background:'rgba(255,255,255,0.02)'}}>
+        <h2 style={titleStyle}>{t.faq.title}</h2>
+        <div style={{maxWidth:700,margin:'24px auto 0',display:'flex',flexDirection:'column',gap:8}}>
+          {t.faq.items.map((f,i)=>
+            <div key={i} style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:10,overflow:'hidden'}}>
+              <button onClick={()=>setOpenFaq(openFaq===i?null:i)} style={{width:'100%',background:'none',border:'none',padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',textAlign:'left',gap:10}}>
+                <span style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:14,color:'white',letterSpacing:'0.02em'}}>{f.q}</span>
+                <span style={{color:'#FF3DBD',fontSize:16,flexShrink:0,transform:openFaq===i?'rotate(45deg)':'rotate(0)',transition:'transform 0.2s'}}>+</span>
+              </button>
+              {openFaq===i&&<div style={{padding:'0 16px 14px',fontFamily:'Barlow',fontSize:13,color:'rgba(255,255,255,0.55)',lineHeight:1.6}}>{f.a}</div>}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ─── FINAL CTA ─── */}
+      <section style={{...sectionStyle,textAlign:'center',paddingTop:60,paddingBottom:60}}>
+        <h2 style={{fontFamily:'Barlow Condensed',fontWeight:900,fontSize:mobile?28:42,color:'white',marginBottom:12,lineHeight:1.1}}>{t.finalCta.title}</h2>
+        <p style={{fontFamily:'Barlow',fontSize:15,color:'rgba(255,255,255,0.55)',maxWidth:500,margin:'0 auto 24px'}}>{t.finalCta.sub}</p>
+        <button onClick={onGetStarted} style={{background:'linear-gradient(135deg, #FF3DBD, #A855F7)',border:'none',borderRadius:10,padding:'14px 32px',fontFamily:'Barlow Condensed',fontWeight:900,fontSize:14,color:'white',letterSpacing:'0.12em',cursor:'pointer',boxShadow:'0 8px 32px rgba(255,61,189,0.3)'}}>
+          🚀 {t.finalCta.btn.toUpperCase()} →
+        </button>
+      </section>
+
+      {/* ─── FOOTER ─── */}
+      <footer style={{borderTop:'1px solid rgba(255,255,255,0.05)',padding:'24px 16px',textAlign:'center'}}>
+        <div style={{fontFamily:'Barlow Condensed',fontWeight:700,fontSize:12,color:'rgba(255,255,255,0.5)',letterSpacing:'0.05em',marginBottom:4}}>{t.footer.tag}</div>
+        <div style={{fontFamily:'Barlow',fontSize:11,color:'rgba(255,255,255,0.3)'}}>{t.footer.copy}</div>
+      </footer>
+    </div>
+  );
+}
+
 // ═══ ROOT WRAPPER (Auth + Subscription Check) ═════════════════
 export default function HandballApp() {
   const [authState, setAuthState] = useState('loading'); // 'loading' | 'unauth' | 'expired' | 'ok' | 'recovery'
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
+  const [showAuth, setShowAuth] = useState(false); // false = show landing, true = show auth screen
 
   const checkAuth = async ()=>{
     try {
@@ -2862,7 +3206,12 @@ export default function HandballApp() {
 
   if (authState==='recovery') return <PasswordResetScreen onComplete={()=>setAuthState('unauth')}/>;
   if (authState==='loading') return <LoadingScreen msg="Loading..."/>;
-  if (authState==='unauth')  return <AuthScreen onSuccess={checkAuth}/>;
+  if (authState==='unauth') {
+    if (!showAuth) {
+      return <LandingPage onGetStarted={()=>setShowAuth(true)} onLogin={()=>setShowAuth(true)}/>;
+    }
+    return <AuthScreen onSuccess={checkAuth} onBack={()=>setShowAuth(false)}/>;
+  }
   if (authState==='expired') return <PaywallScreen user={user} subscription={subscription} onLogout={handleLogout}/>;
   
   return <MainApp user={user} subscription={subscription} onLogout={handleLogout}/>;
